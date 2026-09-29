@@ -1,0 +1,93 @@
+<!-- ============================================================ OVERVIEW -->
+<section class="view" id="overview">
+  <div class="hero">
+    <p class="eyebrow">Build Your Own Nexus</p>
+    <h1>Master Nexus DDE by building a small one.</h1>
+    <p class="tagline">Nexus DDE is the C2C program's <b>decision-driven engineering</b> platform: a knowledge graph that is the source of truth, a governed mutation layer, an MCP tool surface agents build through, and a staged delivery pipeline with mechanical gates. The fastest way to master it is to rebuild its essential machinery at 1/100th scale — then use your clone to ship a real app the way the real system ships C2C.</p>
+    <div class="statrow">
+      <div class="stat"><b>8</b><span>weeks, ~8–12 h each</span></div>
+      <div class="stat"><b>32</b><span>lessons, 1 concept each</span></div>
+      <div class="stat"><b>Go + SQLite</b><span>mini-DDE server</span></div>
+      <div class="stat"><b>Next.js</b><span>mini-PCC + capstone UI</span></div>
+      <div class="stat"><b>mini-C2C</b><span>capstone: booking → billing → collections</span></div>
+    </div>
+  </div>
+
+  <h3 class="sech">What you will have built by week 8</h3>
+  <div class="diagram">
+    <div class="flowrow">
+      <div class="fbox"><b>Claude Code</b><span>agents + skills + hooks</span></div>
+      <div class="farrow">→</div>
+      <div class="fbox hot"><b>mini-DDE server</b><span>Go · SQLite · MCP tools<br>graph · gates · waves</span></div>
+      <div class="farrow">→</div>
+      <div class="fbox"><b>mini-PCC</b><span>Next.js journey map,<br>findings console</span></div>
+    </div>
+    <div class="flowrow" style="margin-top:10px">
+      <div class="fbox" style="flex:0 0 30%"><b>docs/ xDRs</b><span>ADR · PDR · DDR · WoW · CIR<br>disk-canonical, graph-mirrored</span></div>
+      <div class="farrow">⇅</div>
+      <div class="fbox"><b>mini-C2C capstone</b><span>mini-booking → mini-billing → mini-collections (Go, events, outbox) + a Next.js three-zone C2C shell — designed, built, and accepted <em>through</em> your mini-DDE</span></div>
+    </div>
+    <p class="dcap">the same four planes as the real system: intent (xDRs) · context (rules) · mechanism (hooks/gates) · state (graph)</p>
+  </div>
+
+  <h3 class="sech">How the course works</h3>
+  <p>Each week is one theme; each lesson is <b>one major concept</b> with numbered, copy-pasteable tasks a junior developer can follow end to end. Every lesson has four fixed parts:</p>
+  <ul>
+    <li><b>The concept</b> — what the mechanism is and the problem it exists to solve.</li>
+    <li><b>In the real system</b> <span class="chip" style="color:var(--real);border-color:var(--real)">real system</span> — the exact files, tools, and rules in the C2C Ono repo (<code>C2C_Ono_AIR310054</code>) that implement the full-size version. Keep the real repo open in a second window; the course is a guided tour of it as much as a build.</li>
+    <li><b>Tasks</b> — step-by-step instructions with the code that matters written out in full.</li>
+    <li><b>Checkpoint</b> <span class="chip ok">✓</span> — a concrete "you are done when…" you can verify mechanically, in the spirit of the system you're cloning: <em>verify, don't assume</em>.</li>
+  </ul>
+  <p>Lessons build strictly on each other — the state machine you write in week 2 guards the statuses week 6's gates protect; the wave planner from week 5 orders the services you build in week 8. Don't skip.</p>
+
+  <div class="callout note">
+    <h4>Prerequisites &amp; setup (do this before week 1)</h4>
+    <ul>
+      <li>Comfortable-ish with Go basics and one JS framework; everything else is taught in place.</li>
+      <li>Install: Go ≥ 1.22, Node ≥ 20, git, SQLite CLI (<code>sqlite3</code>), Docker (weeks 7–8), Claude Code (week 4 on).</li>
+      <li>Clone access to the real repo (<code>C2C_Ono_AIR310054</code>) for the "in the real system" cross-reads — read-only is fine.</li>
+      <li>Create your workspace: <code>mkdir mini-dde &amp;&amp; cd mini-dde &amp;&amp; git init</code>. All paths in the course are relative to this root.</li>
+    </ul>
+  </div>
+
+  <h3 class="sech">The 8-stage pipeline you are cloning</h3>
+  <p>The real system moves every piece of work through a numbered lifecycle. The course builds the machinery in dependency order, then the capstone walks one real feature through all of it:</p>
+  <div class="diagram">
+    <div class="pipe">
+      <div class="pstage"><span class="pn">pre-0</span><b>Ideate → Promote</b><span>CIR → challenge → xDR</span><span class="pw">W3 · W7</span></div>
+      <div class="pstage"><span class="pn">0</span><b>Strategic design</b><span>human + AI brief</span><span class="pw">W8</span></div>
+      <div class="pstage"><span class="pn">1–2</span><b>Autonomous design</b><span>SDD + review + converge</span><span class="pw">W8</span></div>
+      <div class="pstage"><span class="pn">3</span><b>Task generation</b><span>work packages + waves</span><span class="pw">W5</span></div>
+      <div class="pstage"><span class="pn">4</span><b>Foundation</b><span>shared types, mocks, infra</span><span class="pw">W8</span></div>
+      <div class="pstage"><span class="pn">5</span><b>Autonomous build</b><span>build to contracts</span><span class="pw">W8</span></div>
+      <div class="pstage"><span class="pn">6</span><b>Integration verify</b><span>mock → real, wave order</span><span class="pw">W8</span></div>
+      <div class="pstage"><span class="pn">7</span><b>Acceptance</b><span>gates, DoD, verdicts</span><span class="pw">W6 · W8</span></div>
+    </div>
+    <p class="dcap">stages per CLAUDE.md § "Process — Nexus DDE 8-stage lifecycle" · the W-tags show where this course builds each piece</p>
+  </div>
+
+  <h3 class="sech">The weeks</h3>
+  <div class="wkcards">
+    <a class="wkcard" href="#week1"><span class="wknum">WEEK 1</span><b>The graph is the truth</b><p>Why DDE puts a knowledge graph — not documents, not tickets — at the center. Build the node/edge store in Go + SQLite and a CLI to talk to it.</p><span class="wkmeta">nodes · edges · project scoping · CLI</span></a>
+    <a class="wkcard" href="#week2"><span class="wknum">WEEK 2</span><b>Governed mutation</b><p>Nothing mutates without a rule. Status state machines, content-addressed IDs, required edges, and validator chains at the write boundary.</p><span class="wkmeta">update_status · allocator · edge contracts · validators</span></a>
+    <a class="wkcard" href="#week3"><span class="wknum">WEEK 3</span><b>Decisions &amp; findings</b><p>The authority chain: xDR records on disk, mirrored as graph nodes, supersession, governance lint — and findings/escalations as the graph's memory of open questions.</p><span class="wkmeta">ADR/PDR/DDR/WoW/CIR · GOVERNED_BY · register_finding</span></a>
+    <a class="wkcard" href="#week4"><span class="wknum">WEEK 4</span><b>The MCP server</b><p>Tools are the agent interface. Wrap your graph in an MCP server, wire Claude Code to it, and adopt the graph-first working discipline.</p><span class="wkmeta">mcp-go · tool registry · .mcp.json · hooks</span></a>
+    <a class="wkcard" href="#week5"><span class="wknum">WEEK 5</span><b>Contracts &amp; waves</b><p>Contracts carry schemas; PRODUCES/CONSUMES choreography <em>is</em> the dependency model; Kahn's algorithm turns it into parallel build waves; context packages feed builders.</p><span class="wkmeta">JSON Schema · validate_schema · compute_wave_plan</span></a>
+    <a class="wkcard" href="#week6"><span class="wknum">WEEK 6</span><b>Gates &amp; enforcement</b><p>Named exit criteria with machine-checkable evidence, reviewer verdicts, the Definition of Done — and Claude Code hooks that make skipping impossible.</p><span class="wkmeta">check_gate · gate evidence · DoD · exit-2 hooks</span></a>
+    <a class="wkcard" href="#week7"><span class="wknum">WEEK 7</span><b>Pipeline &amp; mini-PCC</b><p>Skills encode process as executable documents; agent sessions claim work atomically; a Next.js Process Control Center renders it all — the server derives, the UI projects.</p><span class="wkmeta">SKILL.md · claim_work · /api/pipeline · journey map</span></a>
+    <a class="wkcard" href="#week8"><span class="wknum">WEEK 8</span><b>Capstone: mini-C2C</b><p>Use your mini-DDE end to end: ideate → promote → contracts → waves → build three event-driven Go services and a C2C-shell Next.js frontend → gates → COMPLETE.</p><span class="wkmeta">booking → billing → collections · outbox · lifecycle spine</span></a>
+  </div>
+
+  <h3 class="sech">Ground rules (borrowed from the system you're cloning)</h3>
+  <ul>
+    <li><b>Graph first.</b> From week 4 on, query your graph before grepping your files — the discipline of <code>.claude/rules/bld-knowledge-graph-first.md</code>.</li>
+    <li><b>No stubs, no shortcuts.</b> Every lesson's code compiles and its checkpoint passes before you move on (<code>bld-no-stubs.md</code>, <code>bld-no-shortcuts.md</code>).</li>
+    <li><b>Verify, don't assume.</b> Run the test, read the output. "It compiles" is not "it works" (<code>universal-agent-behaviors.md</code> §7).</li>
+    <li><b>Capture friction.</b> From week 3 on, when something surprises you, register a Finding in your own graph. Eat the dog food.</li>
+  </ul>
+
+  <div class="callout war">
+    <h4>Why this course exists as a build, not a reading list</h4>
+    <p>Every mechanism in DDE was forced into existence by a concrete failure: an audit agent recommended committing straight to <code>main</code> because the policy lived in three partial places with no citable decision; a whole SPA was built to the text spec while ignoring every Figma frame; two PRs reached auto-merge with 19 unanswered review findings; a manually queued CD run executed a full Terraform destroy of a live environment. Each week's "why it exists" callouts tell these war stories. When you've rebuilt the guard yourself, you'll never wonder why the real one blocks you.</p>
+  </div>
+</section>

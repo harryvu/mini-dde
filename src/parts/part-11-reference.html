@@ -1,0 +1,108 @@
+<!-- ============================================================ REFERENCE -->
+<section class="view" id="reference">
+  <header class="weekhead">
+    <p class="eyebrow">Reference</p>
+    <h2>Cheat sheets &amp; glossary</h2>
+    <p class="wintro">Everything you'll want at your elbow while working — the mini↔real mapping, the vocabularies, and the reading list into the full-size system.</p>
+  </header>
+
+  <h3 class="sech">Mini-DDE ↔ real Nexus DDE</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Piece</th><th>Your mini (week)</th><th>The real thing</th></tr>
+    <tr><td>Graph store</td><td>Go + SQLite, ~14 node types (W1)</td><td>Neo4j via <code>neo4j-go-driver</code>, 63 node + 63 edge types, hand-written Cypher, project-scoped store (<code>builder/server/internal/graph/</code>)</td></tr>
+    <tr><td>Status machines</td><td>4 transition maps + <code>UpdateStatus</code> (W2)</td><td>9+ maps in <code>model.go</code>, multi-label atomic writes, changelog + events, derived-status refusals (<code>outcome_status_is_derived</code>)</td></tr>
+    <tr><td>ID allocation</td><td><code>DeriveSlug</code> + Crockford suffix, atomic INSERT (W2)</td><td>Atomic Cypher MERGE allocator + reserve/redeem lifecycle with tombstones and reapers (Builder ADR-atomic-id-allocator-H37G)</td></tr>
+    <tr><td>Decision records</td><td>5 templates, dual-homing, supersession, lint (W3)</td><td>Format A + corpus manifest across 4 tiers, citation-symmetry lint, compliance-claims lint, untracked-record Stop hook</td></tr>
+    <tr><td>Findings</td><td>Field contract + AFFECTS/FOUND_IN + rollback (W3)</td><td>19-value classification taxonomy, scope axis, evidence-gated resolve (C99G), routing, reservation flow</td></tr>
+    <tr><td>MCP server</td><td>mcp-go, ~20 tools, one registry (W4)</td><td>110 tools, stdio + streamable HTTP, fast-fail health cache, in-flight semaphore, failure observation</td></tr>
+    <tr><td>Contracts / events</td><td>JSON Schema inline + <code>validate_schema</code> (W5)</td><td>Same + <code>verify_contract_compliance</code> (AST-parses real Go against consumed schemas)</td></tr>
+    <tr><td>Wave planner</td><td>Kahn over 3 edge sources, cycle-refusal (W5)</td><td>Same algorithm + persisted derived edges tagged <code>computed_by</code>, precedence upgrades, reachability-guarded sequential edges</td></tr>
+    <tr><td>Context packages</td><td>One-call assembly (W5)</td><td>Same + lean projection, budget mode (per-phase BFS depths, 500-node cap), DoD/stub-pattern payloads</td></tr>
+    <tr><td>Gates</td><td>3 gates, evidence, DoD-6 (W6)</td><td>22 seeded gates, scope-aware + variant-aware condition sets, evidence freshness, content validators with sentinel phrases, DoD-11/12</td></tr>
+    <tr><td>Verdicts</td><td>4 reviewers, 2 scales, latest-wins (W6)</td><td>9-reviewer canonical enum with alias normalization, <code>finding_count_plausible</code> superficiality tripwire</td></tr>
+    <tr><td>Hooks</td><td>Gate flag-file pair + precondition + pre-commit (W6)</td><td>~48 hooks across 8 events, sectioned pre-commit with ~25 sections, diff-scoped pre-push governance lint</td></tr>
+    <tr><td>Skills</td><td>mini-ideate, mini-promote (W7)</td><td>100+ skills; ideate→challenge→promote→design→build→accept, verify-or-mark graph writes, banner-schema'd DA questions</td></tr>
+    <tr><td>Sessions</td><td>assign/claim(CAS)/complete (W7)</td><td>Same + runner provenance, audit-marker enforcement, respstatus rollup on completion</td></tr>
+    <tr><td>PCC</td><td>Next.js, 3 screens, poll (W7)</td><td>Vite/React 19, 11+ surfaces, REST + GraphQL dual plane, WebSocket cache invalidation, d3 choreography diagrams</td></tr>
+    <tr><td>The app itself</td><td>mini-C2C: 3 services + shell UI (W8)</td><td>C2C Ono: 5+ domains, ~60 services, AlloyDB/Spanner/Pub/Sub/Cloud Run, release trains</td></tr>
+  </table></div>
+
+  <h3 class="sech">Node types (mini set)</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Type</th><th>What it is</th><th>Lifecycle</th></tr>
+    <tr><td><code>Project</code></td><td>The tenant/root anchor</td><td>—</td></tr>
+    <tr><td><code>Responsibility</code></td><td>The central unit of work: one owned capability</td><td>NOT_STARTED → DESIGNING → DESIGN_COMPLETE → BUILDING → BUILT → IN_REVIEW → (FIXING ⇄) → INTEGRATING → COMPLETE, BLOCKED escapes</td></tr>
+    <tr><td><code>WorkPackage</code></td><td>A buildable slice of a Responsibility, wave-ordered</td><td>NOT_STARTED → SPECIFIED → BUILDING → IN_REVIEW → COMPLETE (rework legal)</td></tr>
+    <tr><td><code>Decision</code></td><td>An xDR mirrored from disk (<code>doc_type</code>: adr/pdr/ddr/wow/cir)</td><td>Proposed → Accepted → Superseded/Deprecated; CIR: exploring → challenged → validated → promoted</td></tr>
+    <tr><td><code>Document</code></td><td>A disk artifact the graph points at (<code>path</code>)</td><td>—</td></tr>
+    <tr><td><code>Finding</code></td><td>A defect/gap/question found mid-work</td><td>OPEN → RESOLVED → CONFIRMED; REJECTED (DA), ESCALATED, DEFERRED (external-only)</td></tr>
+    <tr><td><code>Escalation</code></td><td>A DA question with ≥2 explicit options</td><td>pending → resolved/expired (tool-owned)</td></tr>
+    <tr><td><code>Event</code></td><td>Choreography currency; carries its JSON Schema</td><td>—</td></tr>
+    <tr><td><code>Contract</code></td><td>API/data interface; carries schemas/DDL</td><td>SPECIFIED → BUILT → VERIFIED</td></tr>
+    <tr><td><code>Pattern</code></td><td>Reusable (anti-)pattern, institutional memory</td><td>draft → candidate → applicable → enforced → retired</td></tr>
+    <tr><td><code>Verdict</code></td><td>One reviewer's judgment on one Responsibility</td><td>—</td></tr>
+    <tr><td><code>AgentSession</code></td><td>One agent's work claim + result</td><td>active → completed/failed</td></tr>
+    <tr><td><code>GateEvidence</code></td><td>Submitted proof for one (gate, check)</td><td>append-only</td></tr>
+    <tr><td><code>ExternalDependency</code></td><td>The only legal deferral anchor (BLOCKS a Finding)</td><td>pending/blocked → available/not_needed</td></tr>
+  </table></div>
+
+  <h3 class="sech">Edge types (mini set)</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Edge</th><th>Source → target</th><th>Meaning</th></tr>
+    <tr><td><code>BELONGS_TO</code></td><td>WorkPackage → Responsibility</td><td>work breakdown</td></tr>
+    <tr><td><code>DOCUMENTED_BY</code></td><td>Responsibility → Document</td><td>where the spec lives</td></tr>
+    <tr><td><code>GOVERNED_BY</code></td><td>Responsibility → Decision</td><td>what authority binds this work (also a lineage edge)</td></tr>
+    <tr><td><code>PRODUCES</code> / <code>CONSUMES</code></td><td>Responsibility → Event</td><td><b>the</b> dependency model — the planner reads only this</td></tr>
+    <tr><td><code>AFFECTS</code> / <code>FOUND_IN</code></td><td>Finding → Responsibility</td><td>required at register, verify-and-rollback</td></tr>
+    <tr><td><code>DEPENDS_ON</code></td><td>WorkPackage → WorkPackage</td><td>explicit ordering (planner input)</td></tr>
+    <tr><td><code>WORKS_ON</code></td><td>AgentSession → Responsibility/WP</td><td>who's on it</td></tr>
+    <tr><td><code>VERDICT_FOR</code></td><td>Verdict → Responsibility</td><td>review output</td></tr>
+    <tr><td><code>PROMOTES_TO</code></td><td>CIR → Decision</td><td>ideation lineage</td></tr>
+    <tr><td><code>SUPERSEDES</code></td><td>Decision → Decision</td><td>record replacement (symmetric with file pointers)</td></tr>
+    <tr><td><code>BLOCKS</code></td><td>ExternalDependency → Finding</td><td>the deferral authorization</td></tr>
+    <tr><td><code>ORIGINATED_FROM / SPAWNED_FROM / DERIVED_FROM</code></td><td>Responsibility → CIR/Resp/Finding</td><td>lineage — ≥1 required per new Responsibility</td></tr>
+  </table></div>
+
+  <h3 class="sech">The locked C2C vocabulary (used in the capstone)</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Term</th><th>Definition</th></tr>
+    <tr><td><b>Contractual documentation</b></td><td>the commercial agreement + supporting docs submitted for booking and Contract setup</td></tr>
+    <tr><td><b>Client engagement</b></td><td>pre-spine work, bridged by <code>correlation_id</code> until the SAP Contract Number exists</td></tr>
+    <tr><td><b>Contract</b></td><td>the lifecycle-spine anchor, identified by SAP Contract Number — the ONLY lifecycle key</td></tr>
+    <tr><td><b>Invoice</b></td><td>billing document issued to the client (substates <code>draft|issued|paid</code> live on Invoice, never on the spine)</td></tr>
+    <tr><td><b>Receivable</b></td><td>the amount owed after an invoice is issued (substates <code>open|reminded|settled</code>)</td></tr>
+    <tr><td><b>Lifecycle spine</b></td><td><code>setup → active → in fulfilment → financially closing → closed</code> — domains never redefine these states locally</td></tr>
+    <tr><td><b>Agent vs persona</b></td><td>an agent is never a persona; personas are human roles only</td></tr>
+  </table></div>
+
+  <h3 class="sech">Reading list into the real system (in this order)</h3>
+  <div class="tablewrap"><table>
+    <tr><th>#</th><th>Read</th><th>Because</th></tr>
+    <tr><td>1</td><td><code>docs/governance-framework.md</code></td><td>the whole framework — read before week 1 and again after week 8</td></tr>
+    <tr><td>2</td><td><code>CLAUDE.md</code> (root)</td><td>the operational map: stack, lifecycle, skills, layout</td></tr>
+    <tr><td>3</td><td><code>.claude/rules/bld-knowledge-graph-first.md</code> + <code>bld-graph-edge-contracts.md</code></td><td>the graph discipline you cloned in weeks 1–2</td></tr>
+    <tr><td>4</td><td><code>builder/server/internal/graph/model.go</code></td><td>the full schema — skim the transition maps and edge constants</td></tr>
+    <tr><td>5</td><td><code>.claude/rules/decision-records.md</code> + <code>docs/adr/000-template.md</code></td><td>the record discipline (week 3 full-size)</td></tr>
+    <tr><td>6</td><td><code>builder/server/internal/tools/registry.go</code></td><td>110 tools, one registry — the week-4 pattern at scale</td></tr>
+    <tr><td>7</td><td><code>builder/server/internal/graph/wave.go</code> + <code>internal/context/assembler.go</code></td><td>the real planner and context assembly (week 5)</td></tr>
+    <tr><td>8</td><td><code>builder/server/internal/graph/baseline.go</code> + <code>gate_scope_aware.go</code></td><td>22 gates, scope/variant awareness (week 6)</td></tr>
+    <tr><td>9</td><td><code>.claude/hooks/enforce-gate-before-status.sh</code> + <code>.claude/settings.json</code></td><td>the flagship hook you cloned, and the full wiring</td></tr>
+    <tr><td>10</td><td><code>.claude/skills/bld-autonomous-build/SKILL.md</code></td><td>the 1,055-line Stage-5 orchestration — the pipeline in full</td></tr>
+    <tr><td>11</td><td><code>domains/booking/services/svc_handoff_mobilisation/</code></td><td>the service anatomy your capstone mirrors</td></tr>
+    <tr><td>12</td><td><code>.claude/rules/bld-deferral-policy.md</code> + <code>pr-get-to-green.md</code></td><td>the doctrine documents — deferrals and merge readiness</td></tr>
+  </table></div>
+
+  <h3 class="sech">Doctrines worth memorizing</h3>
+  <ul>
+    <li><b>Graph first</b> — query before grepping; if it isn't an edge, it doesn't exist.</li>
+    <li><b>The contract is the specification</b> — "not built yet" is never a reason.</li>
+    <li><b>Statuses move through the map</b> — one writer, reasons required, changelog always.</li>
+    <li><b>Server allocates IDs</b> — parallel authors, zero collisions.</li>
+    <li><b>Evidence beats assertion</b> — "passed" must be distinguishable from "did not run".</li>
+    <li><b>Zero internal deferrals</b> — external dependency + DA authorization, or do the work.</li>
+    <li><b>Advisory is a state with an owner and an exit criterion</b> — a rule violated twice becomes a hook.</li>
+    <li><b>The server derives, the UI projects</b> — derived state has a sole writer.</li>
+    <li><b>Confusion surfaced beats confusion buried</b> — register the finding, register the escalation, stop guessing.</li>
+    <li><b>Verify, don't assume</b> — read the write back; run the test; the output is the truth.</li>
+  </ul>
+</section>

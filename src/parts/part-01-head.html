@@ -1,0 +1,274 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Build Your Own Nexus</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#faf9fc; --surface:#ffffff; --surface2:#f3f0f7; --ink:#211c28; --muted:#6a6374;
+    --faint:#9c94a8; --line:#e7e2ee; --accent:#a100ff; --accent-ink:#8500d6;
+    --accent-soft:#f4e7ff; --code-bg:#f6f3fa; --code-ink:#3b3346;
+    --ok:#177a4c; --ok-soft:#e3f5ec; --warn:#8a5f00; --warn-soft:#fdf3d9;
+    --danger:#c0303a; --danger-soft:#fde8ea; --real:#0b6e8a; --real-soft:#e2f2f8;
+    --shadow:0 1px 2px rgba(33,28,40,.05),0 4px 16px rgba(33,28,40,.06);
+    --display:"Bricolage Grotesque","Public Sans",system-ui,sans-serif;
+    --body:"Public Sans",system-ui,-apple-system,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#151218; --surface:#1d1923; --surface2:#262031; --ink:#ece8f2; --muted:#a79fb3;
+      --faint:#766d84; --line:#322c3e; --accent:#c168ff; --accent-ink:#cf8cff;
+      --accent-soft:#32204b; --code-bg:#211c2b; --code-ink:#d9d3e5;
+      --ok:#4cc98d; --ok-soft:#173629; --warn:#e0b455; --warn-soft:#3a2f15;
+      --danger:#f07a84; --danger-soft:#41232a; --real:#5cc0dc; --real-soft:#123240;
+      --shadow:0 1px 2px rgba(0,0,0,.35),0 4px 18px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#151218; --surface:#1d1923; --surface2:#262031; --ink:#ece8f2; --muted:#a79fb3;
+    --faint:#766d84; --line:#322c3e; --accent:#c168ff; --accent-ink:#cf8cff;
+    --accent-soft:#32204b; --code-bg:#211c2b; --code-ink:#d9d3e5;
+    --ok:#4cc98d; --ok-soft:#173629; --warn:#e0b455; --warn-soft:#3a2f15;
+    --danger:#f07a84; --danger-soft:#41232a; --real:#5cc0dc; --real-soft:#123240;
+    --shadow:0 1px 2px rgba(0,0,0,.35),0 4px 18px rgba(0,0,0,.3);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);
+    font-size:15.5px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  h1,h2,h3{font-family:var(--display);text-wrap:balance;line-height:1.15;margin:0}
+  a{color:var(--accent-ink);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:var(--mono);font-size:.86em;background:var(--code-bg);color:var(--code-ink);
+    padding:.12em .38em;border-radius:5px;border:1px solid var(--line)}
+  ::selection{background:var(--accent-soft)}
+  button{font-family:var(--body)}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+  /* ---------- top bar ---------- */
+  .topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:16px;
+    padding:10px 22px;background:var(--surface);border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:baseline;gap:10px;min-width:0}
+  .brand .mark{font-family:var(--display);font-weight:800;font-size:17px;letter-spacing:-.01em;white-space:nowrap}
+  .brand .mark b{color:var(--accent-ink)}
+  .brand .sub{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .progress-wrap{margin-left:auto;display:flex;align-items:center;gap:10px;min-width:150px}
+  .progress-label{font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .progress-bar{width:130px;height:6px;border-radius:99px;background:var(--surface2);overflow:hidden;border:1px solid var(--line)}
+  .progress-bar i{display:block;height:100%;width:0%;background:var(--accent);border-radius:99px;transition:width .35s ease}
+  .menu-btn{display:none;border:1px solid var(--line);background:var(--surface2);color:var(--ink);
+    border-radius:8px;padding:6px 11px;font-size:13px;cursor:pointer}
+
+  /* ---------- shell ---------- */
+  .shell{display:flex;max-width:1240px;margin:0 auto;align-items:flex-start}
+  nav.rail{position:sticky;top:57px;width:252px;flex:none;max-height:calc(100vh - 57px);
+    overflow-y:auto;padding:20px 14px 40px}
+  .rail h5{margin:18px 8px 6px;font-size:10.5px;font-weight:700;letter-spacing:.11em;
+    text-transform:uppercase;color:var(--faint)}
+  .rail a.navlink{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;
+    color:var(--muted);font-size:13.5px;font-weight:500}
+  .rail a.navlink:hover{background:var(--surface2);text-decoration:none;color:var(--ink)}
+  .rail a.navlink.active{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+  .rail .wk{flex:none;font-family:var(--mono);font-size:10.5px;color:var(--faint);width:26px}
+  .rail a.navlink.active .wk{color:var(--accent-ink)}
+  .rail .nlabel{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rail .ncount{flex:none;font-family:var(--mono);font-size:10.5px;color:var(--faint);font-variant-numeric:tabular-nums}
+  .rail .ncount.done{color:var(--ok)}
+
+  main{flex:1;min-width:0;padding:34px 40px 90px;border-left:1px solid var(--line);min-height:calc(100vh - 57px)}
+  .view{display:none;max-width:860px}
+  .view.active{display:block}
+
+  /* ---------- week header ---------- */
+  .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--accent-ink);margin:0 0 10px;font-weight:600}
+  .weekhead h2{font-size:31px;font-weight:800;letter-spacing:-.015em}
+  .weekhead .wintro{color:var(--muted);margin:14px 0 0;max-width:64ch}
+  .wgoals{margin:18px 0 6px;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px}
+  .wgoals li{background:var(--surface);border:1px solid var(--line);border-radius:10px;
+    padding:9px 13px;font-size:13px;color:var(--muted)}
+  .wgoals li b{color:var(--ink);font-weight:600}
+  .wtools{display:flex;gap:8px;margin:16px 0 4px}
+  .wtools button{border:1px solid var(--line);background:var(--surface);color:var(--muted);
+    font-size:12px;border-radius:8px;padding:5px 11px;cursor:pointer}
+  .wtools button:hover{color:var(--ink);border-color:var(--faint)}
+  .weekhead{margin-bottom:22px}
+
+  /* ---------- lesson accordion ---------- */
+  details.lesson{background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    margin:14px 0;box-shadow:var(--shadow);overflow:hidden}
+  details.lesson[open]{border-color:color-mix(in srgb, var(--accent) 35%, var(--line))}
+  details.lesson summary{display:flex;align-items:center;gap:13px;padding:15px 18px;cursor:pointer;
+    list-style:none;user-select:none}
+  details.lesson summary::-webkit-details-marker{display:none}
+  details.lesson summary:hover{background:var(--surface2)}
+  .lnum{flex:none;font-family:var(--mono);font-size:12px;font-weight:600;color:var(--accent-ink);
+    background:var(--accent-soft);border-radius:7px;padding:3px 8px;font-variant-numeric:tabular-nums}
+  .ltitle{font-family:var(--display);font-weight:700;font-size:16.5px;letter-spacing:-.01em;flex:1;min-width:0}
+  .lconcept{flex:none;font-family:var(--mono);font-size:10.5px;color:var(--faint);
+    border:1px solid var(--line);border-radius:99px;padding:2px 9px;white-space:nowrap}
+  .ldone{flex:none;display:flex;align-items:center}
+  .ldone input{appearance:none;width:19px;height:19px;margin:0;border:1.5px solid var(--faint);
+    border-radius:6px;cursor:pointer;display:grid;place-content:center;background:var(--surface)}
+  .ldone input:checked{background:var(--ok);border-color:var(--ok)}
+  .ldone input:checked::before{content:"✓";color:#fff;font-size:12px;font-weight:700;line-height:1}
+  .chev{flex:none;color:var(--faint);transition:transform .2s;font-size:11px}
+  details[open] .chev{transform:rotate(90deg)}
+  .lbody{padding:6px 22px 24px;border-top:1px solid var(--line)}
+  .lbody > p.lead{font-size:15.5px;margin-top:16px}
+  .lbody h4{font-family:var(--display);font-size:13px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--muted);margin:26px 0 10px;font-weight:700}
+  .lbody p{max-width:70ch}
+  .lbody ul{max-width:70ch}
+  .buildson{font-size:12.5px;color:var(--faint);margin:10px 0 0}
+  .buildson code{font-size:.9em}
+
+  /* ---------- steps ---------- */
+  ol.steps{counter-reset:step;list-style:none;margin:0;padding:0}
+  ol.steps > li{counter-increment:step;position:relative;padding:2px 0 18px 44px;border-left:2px solid var(--line);margin-left:14px}
+  ol.steps > li:last-child{border-left-color:transparent}
+  ol.steps > li::before{content:counter(step);position:absolute;left:-15px;top:0;width:28px;height:28px;
+    border-radius:99px;background:var(--surface);border:2px solid var(--line);color:var(--muted);
+    display:grid;place-content:center;font-family:var(--mono);font-size:12px;font-weight:600}
+  ol.steps > li > p:first-child{margin-top:2px}
+  ol.steps p{margin:8px 0}
+
+  /* ---------- code blocks ---------- */
+  .code{position:relative;margin:12px 0;max-width:100%}
+  .code pre{margin:0;background:var(--code-bg);border:1px solid var(--line);border-radius:11px;
+    padding:14px 16px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.62;
+    color:var(--code-ink)}
+  .code pre code{background:none;border:none;padding:0;font-size:inherit;color:inherit}
+  .code .fname{position:absolute;top:-9px;left:14px;background:var(--surface2);border:1px solid var(--line);
+    color:var(--muted);font-family:var(--mono);font-size:10.5px;border-radius:6px;padding:1px 8px}
+  .code[data-file] pre{padding-top:20px}
+  .copybtn{position:absolute;top:8px;right:8px;border:1px solid var(--line);background:var(--surface);
+    color:var(--muted);font-family:var(--mono);font-size:10.5px;border-radius:7px;padding:4px 9px;
+    cursor:pointer;opacity:0;transition:opacity .15s}
+  .code:hover .copybtn,.copybtn:focus-visible{opacity:1}
+  .copybtn.copied{color:var(--ok);border-color:var(--ok)}
+
+  /* ---------- callouts ---------- */
+  .callout{border-radius:12px;padding:13px 17px;margin:16px 0;border:1px solid;max-width:74ch}
+  .callout h4{margin:0 0 6px !important;font-size:11px !important;letter-spacing:.1em}
+  .callout p{margin:5px 0;font-size:13.5px}
+  .callout ul{margin:6px 0;font-size:13.5px;padding-left:18px}
+  .callout.real{background:var(--real-soft);border-color:color-mix(in srgb, var(--real) 30%, transparent)}
+  .callout.real h4{color:var(--real)}
+  .callout.check{background:var(--ok-soft);border-color:color-mix(in srgb, var(--ok) 30%, transparent)}
+  .callout.check h4{color:var(--ok)}
+  .callout.war{background:var(--warn-soft);border-color:color-mix(in srgb, var(--warn) 32%, transparent)}
+  .callout.war h4{color:var(--warn)}
+  .callout.note{background:var(--surface2);border-color:var(--line)}
+  .callout.note h4{color:var(--muted)}
+
+  /* ---------- tables ---------- */
+  .tablewrap{overflow-x:auto;margin:14px 0;border:1px solid var(--line);border-radius:11px}
+  table{border-collapse:collapse;width:100%;font-size:13px;background:var(--surface)}
+  th{font-family:var(--display);font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--muted);text-align:left;padding:9px 13px;border-bottom:1px solid var(--line);
+    background:var(--surface2);white-space:nowrap}
+  td{padding:8px 13px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  td code{white-space:nowrap}
+  td.wrapcode code{white-space:normal}
+
+  /* ---------- diagrams ---------- */
+  .diagram{background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    padding:20px;margin:18px 0;overflow-x:auto}
+  .diagram .dcap{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:14px;text-align:center}
+  .flowrow{display:flex;align-items:stretch;gap:0;min-width:560px}
+  .fbox{flex:1;background:var(--surface2);border:1px solid var(--line);border-radius:10px;
+    padding:10px 12px;text-align:center;min-width:96px}
+  .fbox b{display:block;font-family:var(--display);font-size:13px}
+  .fbox span{font-size:11px;color:var(--muted)}
+  .fbox.hot{background:var(--accent-soft);border-color:color-mix(in srgb, var(--accent) 40%, var(--line))}
+  .fbox.hot b{color:var(--accent-ink)}
+  .farrow{flex:none;display:grid;place-content:center;color:var(--faint);padding:0 7px;font-size:15px}
+
+  /* pipeline stepper */
+  .pipe{display:flex;gap:6px;min-width:760px}
+  .pstage{flex:1;border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--surface2)}
+  .pstage .pn{font-family:var(--mono);font-size:10px;color:var(--faint)}
+  .pstage b{display:block;font-size:12px;font-family:var(--display);margin:2px 0}
+  .pstage span{font-size:10.5px;color:var(--muted);display:block;line-height:1.4}
+  .pstage .pw{display:inline-block;margin-top:6px;font-family:var(--mono);font-size:9.5px;color:var(--accent-ink);
+    background:var(--accent-soft);border-radius:5px;padding:1px 6px}
+
+  /* status chips */
+  .chip{display:inline-block;font-family:var(--mono);font-size:10.5px;border-radius:6px;
+    padding:1px 7px;border:1px solid var(--line);background:var(--surface2);color:var(--muted);white-space:nowrap}
+  .chip.acc{background:var(--accent-soft);color:var(--accent-ink);border-color:transparent}
+  .chip.ok{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+  .chip.warn{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+  .chip.bad{background:var(--danger-soft);color:var(--danger);border-color:transparent}
+
+  /* ---------- overview specifics ---------- */
+  .hero{padding:8px 0 6px}
+  .hero h1{font-size:42px;font-weight:800;letter-spacing:-.02em;max-width:16ch}
+  .hero .tagline{font-size:17px;color:var(--muted);max-width:56ch;margin:16px 0 0}
+  .hero .tagline b{color:var(--ink)}
+  .statrow{display:flex;gap:10px;flex-wrap:wrap;margin:22px 0 8px}
+  .stat{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:10px 16px;box-shadow:var(--shadow)}
+  .stat b{display:block;font-family:var(--display);font-size:19px;color:var(--accent-ink)}
+  .stat span{font-size:11.5px;color:var(--muted)}
+  .wkcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;margin:16px 0}
+  .wkcard{display:block;background:var(--surface);border:1px solid var(--line);border-radius:13px;
+    padding:15px 17px;box-shadow:var(--shadow);color:inherit}
+  .wkcard:hover{text-decoration:none;border-color:color-mix(in srgb, var(--accent) 40%, var(--line))}
+  .wkcard .wknum{font-family:var(--mono);font-size:10.5px;color:var(--accent-ink);font-weight:600;letter-spacing:.08em}
+  .wkcard b{display:block;font-family:var(--display);font-size:16px;margin:4px 0 5px;letter-spacing:-.01em}
+  .wkcard p{margin:0;font-size:12.5px;color:var(--muted);line-height:1.55}
+  .wkcard .wkmeta{margin-top:9px;font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+  h3.sech{font-size:20px;font-weight:700;letter-spacing:-.01em;margin:38px 0 10px}
+  .view > p{max-width:70ch}
+
+  @media (max-width: 900px){
+    nav.rail{position:fixed;left:0;top:57px;bottom:0;background:var(--surface);z-index:30;
+      transform:translateX(-100%);transition:transform .22s ease;border-right:1px solid var(--line);width:262px}
+    nav.rail.open{transform:none;box-shadow:0 10px 40px rgba(0,0,0,.25)}
+    .menu-btn{display:block}
+    main{border-left:none;padding:24px 18px 80px}
+    .hero h1{font-size:32px}
+    .brand .sub{display:none}
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important;animation:none !important}
+    html{scroll-behavior:auto}
+  }
+</style>
+
+<header class="topbar">
+  <button class="menu-btn" id="menuBtn" aria-label="Toggle navigation">☰ Weeks</button>
+  <div class="brand">
+    <span class="mark">Build Your Own <b>Nexus</b></span>
+    <span class="sub">an 8-week course on mastering Nexus DDE by rebuilding it small</span>
+  </div>
+  <div class="progress-wrap">
+    <span class="progress-label" id="progLabel">0 / 32 lessons</span>
+    <div class="progress-bar" aria-hidden="true"><i id="progFill"></i></div>
+  </div>
+</header>
+
+<div class="shell">
+<nav class="rail" id="rail" aria-label="Course navigation">
+  <h5>Start here</h5>
+  <a class="navlink" href="#overview" data-view="overview"><span class="wk">◈</span><span class="nlabel">Overview &amp; setup</span></a>
+  <h5>Part I — the graph kernel</h5>
+  <a class="navlink" href="#week1" data-view="week1"><span class="wk">W1</span><span class="nlabel">The graph is the truth</span><span class="ncount" data-wkcount="week1">0/4</span></a>
+  <a class="navlink" href="#week2" data-view="week2"><span class="wk">W2</span><span class="nlabel">Governed mutation</span><span class="ncount" data-wkcount="week2">0/4</span></a>
+  <h5>Part II — governance &amp; agents</h5>
+  <a class="navlink" href="#week3" data-view="week3"><span class="wk">W3</span><span class="nlabel">Decisions &amp; findings</span><span class="ncount" data-wkcount="week3">0/4</span></a>
+  <a class="navlink" href="#week4" data-view="week4"><span class="wk">W4</span><span class="nlabel">The MCP server</span><span class="ncount" data-wkcount="week4">0/4</span></a>
+  <h5>Part III — the delivery machine</h5>
+  <a class="navlink" href="#week5" data-view="week5"><span class="wk">W5</span><span class="nlabel">Contracts &amp; waves</span><span class="ncount" data-wkcount="week5">0/4</span></a>
+  <a class="navlink" href="#week6" data-view="week6"><span class="wk">W6</span><span class="nlabel">Gates &amp; enforcement</span><span class="ncount" data-wkcount="week6">0/4</span></a>
+  <a class="navlink" href="#week7" data-view="week7"><span class="wk">W7</span><span class="nlabel">Pipeline &amp; mini-PCC</span><span class="ncount" data-wkcount="week7">0/4</span></a>
+  <h5>Part IV — prove it</h5>
+  <a class="navlink" href="#week8" data-view="week8"><span class="wk">W8</span><span class="nlabel">Capstone: mini-C2C</span><span class="ncount" data-wkcount="week8">0/4</span></a>
+  <h5>Reference</h5>
+  <a class="navlink" href="#reference" data-view="reference"><span class="wk">※</span><span class="nlabel">Cheat sheets &amp; glossary</span></a>
+</nav>
+
+<main>

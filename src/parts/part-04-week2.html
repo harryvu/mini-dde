@@ -1,0 +1,400 @@
+<!-- ============================================================ WEEK 2 -->
+<section class="view" id="week2">
+  <header class="weekhead">
+    <p class="eyebrow">Week 2 · Part I — the graph kernel</p>
+    <h2>Governed mutation</h2>
+    <p class="wintro">A graph anyone can write anything to is a wiki with extra steps. DDE's real power is that <b>every mutation passes a rule at the write boundary</b>: statuses move only along a state machine, IDs are minted by the server, required edges are created inside the write, and validators run in named chains. This week your store stops being a bag of rows and starts being governed.</p>
+    <ul class="wgoals">
+      <li><b>Concept:</b> transition maps + the one legitimate status writer</li>
+      <li><b>Build:</b> <code>update_status</code> with changelog; content-addressed ID allocator</li>
+      <li><b>Build:</b> required-edge contracts; validator chains</li>
+      <li><b>Habit:</b> structured errors — <code>code: human message</code></li>
+    </ul>
+    <div class="wtools"><button data-expand="week2">Expand all lessons</button><button data-collapse="week2">Collapse all</button></div>
+  </header>
+
+  <details class="lesson" data-week="week2" id="l21">
+    <summary><span class="lnum">2.1</span><span class="ltitle">Status is a state machine</span><span class="lconcept">update_status</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l21" aria-label="Mark lesson 2.1 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">Every tracked node type carries a <b>transition map</b> — the complete list of legal from→to moves. There is exactly <b>one legitimate status writer</b>, <code>update_status</code>, which validates the transition, demands a reason, records a changelog entry, and rejects same-status writes. Setting <code>status</code> through a generic property update is forbidden — that's the difference between a lifecycle and a text field.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p>Maps live in <code>model.go</code> (Responsibility at <code>:1709-1734</code>, WorkPackage <code>:1737-1779</code>, Finding <code>:1789-1798</code>); the generic checker is <code>ValidateTransition</code> (<code>:1946-1957</code>). <code>update_status.go</code> picks the map, requires <code>reason</code>, writes atomically, records a ChangelogEntry, and emits a <code>status_changed</code> event. <code>update_node</code> <em>rejects</em> any <code>status</code> key on a mapped type with "use update_status instead" — the rule <code>.claude/rules/bld-status-transitions.md</code>, mechanically enforced.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Encode the maps.</strong> These are simplified but shape-faithful copies of the real ones:</p>
+          <div class="code" data-file><span class="fname">server/internal/graph/transitions.go</span><pre><code>package graph
+
+import "fmt"
+
+// Transition maps: for each node type, current status → set of legal
+// next statuses. "" is the implicit initial status.
+var Transitions = map[string]map[string][]string{
+	"Responsibility": {
+		"":                {"NOT_STARTED"},
+		"NOT_STARTED":     {"DESIGNING", "BLOCKED"},
+		"DESIGNING":       {"DESIGN_COMPLETE", "BLOCKED"},
+		"DESIGN_COMPLETE": {"BUILDING", "BLOCKED"},
+		"BUILDING":        {"BUILT", "IN_REVIEW", "BLOCKED"},
+		"BUILT":           {"IN_REVIEW", "BLOCKED"},
+		"IN_REVIEW":       {"FIXING", "INTEGRATING", "COMPLETE", "BUILDING", "BLOCKED"},
+		"FIXING":          {"IN_REVIEW", "BLOCKED"},
+		"INTEGRATING":     {"COMPLETE", "BLOCKED"},
+		"COMPLETE":        {"BLOCKED"},
+		"BLOCKED": {"NOT_STARTED", "DESIGNING", "DESIGN_COMPLETE",
+			"BUILDING", "BUILT", "IN_REVIEW", "FIXING", "INTEGRATING", "COMPLETE"},
+	},
+	"WorkPackage": {
+		"":            {"NOT_STARTED"},
+		"NOT_STARTED": {"SPECIFIED", "BUILDING", "BLOCKED"},
+		"SPECIFIED":   {"BUILDING", "BLOCKED"},
+		"BUILDING":    {"IN_REVIEW", "BLOCKED"},
+		"IN_REVIEW":   {"FIXING", "COMPLETE", "BUILDING", "BLOCKED"},
+		"FIXING":      {"IN_REVIEW", "BLOCKED"},
+		"COMPLETE":    {"BUILDING", "BLOCKED"}, // per-WP rework is legal
+		"BLOCKED":     {"NOT_STARTED", "SPECIFIED", "BUILDING", "IN_REVIEW", "COMPLETE"},
+	},
+	"Finding": {
+		"":          {"OPEN"},
+		"OPEN":      {"RESOLVED", "REJECTED", "ESCALATED", "DEFERRED"},
+		"RESOLVED":  {"CONFIRMED", "REOPENED"},
+		"ESCALATED": {"OPEN", "REJECTED"},
+		"REOPENED":  {"OPEN"},
+		// CONFIRMED, REJECTED, DEFERRED: terminal — no exits.
+	},
+	"Escalation": {
+		"":        {"pending"},
+		"pending": {"resolved", "expired"},
+	},
+}
+
+func ValidateTransition(nodeType, from, to string) error {
+	m, tracked := Transitions[nodeType]
+	if !tracked {
+		return nil // untracked types have free-form status
+	}
+	if from == to {
+		return fmt.Errorf("same_status: %s is already %q", nodeType, from)
+	}
+	for _, legal := range m[from] {
+		if legal == to {
+			return nil
+		}
+	}
+	return fmt.Errorf("invalid_transition: %s %q → %q is not in the map", nodeType, from, to)
+}</code></pre></div></li>
+        <li><p><strong>Write the one status writer</strong> — with a mandatory reason and a changelog:</p>
+          <div class="code" data-file><span class="fname">server/internal/graph/status.go</span><pre><code>package graph
+
+import (
+	"fmt"
+	"time"
+)
+
+const changelogSchema = `
+CREATE TABLE IF NOT EXISTS changelog (
+  project_id TEXT NOT NULL, node_id TEXT NOT NULL,
+  from_status TEXT, to_status TEXT, reason TEXT NOT NULL,
+  at TEXT NOT NULL
+);`
+
+// UpdateStatus is the ONLY path that may change a node's status.
+func (s *Store) UpdateStatus(id, to, reason string) error {
+	if reason == "" {
+		return fmt.Errorf("reason_required: every transition records why")
+	}
+	n, err := s.GetNode(id)
+	if err != nil {
+		return err
+	}
+	if err := ValidateTransition(n.Type, n.Status, to); err != nil {
+		return err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := tx.Exec(
+		`UPDATE nodes SET status = ?, updated_at = ? WHERE id = ? AND project_id = ?`,
+		to, now, id, s.projectID); err != nil {
+		return fmt.Errorf("update status: %w", err)
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO changelog (project_id, node_id, from_status, to_status, reason, at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		s.projectID, id, n.Status, to, reason, now); err != nil {
+		return fmt.Errorf("changelog: %w", err)
+	}
+	return tx.Commit()
+}</code></pre></div>
+          <p>Add <code>changelogSchema</code> to the <code>schema</code> constant in <code>store.go</code> (or exec it in <code>Open</code>). Status + changelog commit in <b>one transaction</b> — a transition without its audit row never exists.</p></li>
+        <li><p><strong>Fix the seed:</strong> nodes are now born via the map. In <code>seed.sh</code>, after creating <code>booking-core</code>, add a status walk: <code>update-status --id booking-core --to NOT_STARTED --reason "seeded"</code>. Add the <code>update-status</code> subcommand to the CLI (mirror the <code>link</code> pattern — 10 lines).</p></li>
+        <li><p><strong>Test the guard rails.</strong> Table-driven: NOT_STARTED→BUILDING must fail (skips DESIGNING/DESIGN_COMPLETE); IN_REVIEW→COMPLETE must pass; COMPLETE→BUILDING must fail; same-status must fail; missing reason must fail; and CONFIRMED (Finding) must be a dead end.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>Tests green. <code>sqlite3 minidde.db 'SELECT * FROM changelog'</code> shows one row per transition with your reasons. There is no code path that writes <code>nodes.status</code> outside <code>UpdateStatus</code> — grep to prove it.</p></div>
+      <div class="callout war"><h4>Why it exists</h4><p>The real system pairs this with a structural twist worth knowing now: an <b>Outcome</b>'s status is <em>derived</em> from its members and <code>update_status</code> rejects it outright with the structured error <code>outcome_status_is_derived</code> — you move an Outcome by moving its members. Derived state gets a sole server-side writer; direct writes get a named refusal. You'll build a tiny version of that rollup in week 7.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week2" id="l22">
+    <summary><span class="lnum">2.2</span><span class="ltitle">Content-addressed IDs</span><span class="lconcept">allocator</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l22" aria-label="Mark lesson 2.2 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">Decision records get IDs like <code>ADR-outcome-graph-primitive-MHMV</code>: a type, a slug derived from the title, and a random 4-char suffix. <b>Never sequential.</b> Sequential numbering needs a central counter, and the moment two agent sessions author records in parallel branches, counters collide. Content-addressed IDs are allocated server-side, atomically, and a record's identity never depends on authoring order.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>DeriveSlug</code> lives in <code>builder/server/internal/graph/decision_id.go</code>: lowercase, stop-words removed, max 3 meaningful words, max 32 chars. Suffixes are crypto/rand <b>Crockford base32</b> — alphabet <code>0123456789ABCDEFGHJKMNPQRSTVWXYZ</code>, no I/L/O/U, for speakability. <code>Allocate</code> (<code>allocator.go:86-110</code>) retries 8 candidates at width 4, widening to 5 then 6, each attempt one atomic statement. Governance is Builder <code>ADR-atomic-id-allocator-H37G</code>; the caller-supplied-ID ban is <code>ADR-id-canonicalization-server-ZRZ5</code> — "server allocates, disk follows".</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Implement slug derivation + suffix generation:</strong></p>
+          <div class="code" data-file><span class="fname">server/internal/graph/allocator.go</span><pre><code>package graph
+
+import (
+	"crypto/rand"
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+// Crockford base32 minus the confusable letters I, L, O, U.
+const suffixAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+var stopWords = map[string]bool{
+	"a": true, "the": true, "for": true, "of": true, "in": true,
+	"to": true, "and": true, "with": true, "on": true, "at": true,
+}
+var nonAlnum = regexp.MustCompile(`[^a-z0-9]+`)
+
+// DeriveSlug: lowercase, drop stop-words, keep at most 3 meaningful
+// words, cap at 32 chars on a word boundary, kebab-case.
+func DeriveSlug(title string) string {
+	words := nonAlnum.Split(strings.ToLower(title), -1)
+	var kept []string
+	for _, w := range words {
+		if w == "" || stopWords[w] {
+			continue
+		}
+		kept = append(kept, w)
+		if len(kept) == 3 {
+			break
+		}
+	}
+	slug := strings.Join(kept, "-")
+	for len(slug) &gt; 32 {
+		if i := strings.LastIndex(slug, "-"); i &gt; 0 {
+			slug = slug[:i]
+		} else {
+			slug = slug[:32]
+		}
+	}
+	if slug == "" {
+		slug = "record"
+	}
+	return slug
+}
+
+func GenerateSuffix(width int) (string, error) {
+	b := make([]byte, width)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("entropy: %w", err)
+	}
+	out := make([]byte, width)
+	for i, v := range b {
+		out[i] = suffixAlphabet[int(v)%len(suffixAlphabet)]
+	}
+	return string(out), nil
+}</code></pre></div></li>
+        <li><p><strong>Allocate atomically with bounded retry.</strong> The candidate is <code>TYPE-slug-SUFFIX</code>; a collision re-rolls; suffix width widens 4→5→6 before giving up:</p>
+          <div class="code" data-file><span class="fname">server/internal/graph/allocator.go (append)</span><pre><code>// AllocateDecisionID mints a canonical id: TYPE-slug-XXXX. Uniqueness
+// rides the (id, project_id) primary key — INSERT wins or collides,
+// there is no read-then-write race.
+func (s *Store) AllocateDecisionID(docType, title string) (string, error) {
+	dt := strings.ToUpper(docType) // ADR | PDR | DDR | WOW | CIR
+	slug := DeriveSlug(title)
+	for width := 4; width &lt;= 6; width++ {
+		for attempt := 0; attempt &lt; 8; attempt++ {
+			sfx, err := GenerateSuffix(width)
+			if err != nil {
+				return "", err
+			}
+			id := fmt.Sprintf("%s-%s-%s", dt, slug, sfx)
+			res, err := s.db.Exec(`
+				INSERT INTO nodes (id, project_id, type, status, props, created_at, updated_at)
+				VALUES (?, ?, 'Decision', 'Proposed', '{}',
+				        strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+				        strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+				ON CONFLICT DO NOTHING`, id, s.projectID)
+			if err != nil {
+				return "", fmt.Errorf("allocate: %w", err)
+			}
+			if n, _ := res.RowsAffected(); n == 1 {
+				return id, nil // we created it — the id is ours
+			}
+			// collision: re-roll
+		}
+	}
+	return "", fmt.Errorf("retry_exhausted: could not allocate id for %q", title)
+}</code></pre></div>
+          <p>Note what makes it atomic: the <code>INSERT … ON CONFLICT DO NOTHING</code> + <code>RowsAffected</code> check is one statement — the same trick the real server plays with a single Cypher <code>MERGE</code> carrying an ON-CREATE marker.</p></li>
+        <li><p><strong>Test the algorithm with table-driven cases you predict first.</strong> Write your expected slug on paper before running: <code>DeriveSlug("SQLite is the mini-DDE graph store")</code> — "is" isn't a stop-word in your list, so expect <code>sqlite-is-mini</code>; sit with how word choice changes identity, and note the real repo's records read cleanly (<code>adr-ono-xdrs-source-ESHJ</code>) because authors title with the slug in mind. The slug is derived once at allocation and never recomputed. Also assert: suffixes never contain I, L, O, or U; two allocations with the same title yield different IDs.</p></li>
+        <li><p><strong>Wire a CLI command</strong> <code>allocate --type adr --title "..."</code> and mint your first three IDs. Keep them — week 3 turns them into records.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>1,000 allocations in a loop: zero errors, zero duplicate IDs (assert with a map), all suffixes clean of I/L/O/U. Same-title allocations coexist happily.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week2" id="l23">
+    <summary><span class="lnum">2.3</span><span class="ltitle">Edge contracts &amp; server-minted edges</span><span class="lconcept">required edges</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l23" aria-label="Mark lesson 2.3 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">Some edges aren't optional decoration — they're part of what makes a node <em>valid</em>. In the real system a new Responsibility must carry at least one <b>lineage edge</b> (where did this work come from — a CIR? a Decision? a Finding?) <em>in the same create call</em>, and each lineage target must already exist. The deeper principle: <b>required edges are created inside the write, never left to a second client call</b> that might never come.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>ValidLineageEdges</code> = {<code>ORIGINATED_FROM</code>, <code>GOVERNED_BY</code>, <code>SPAWNED_FROM</code>, <code>DERIVED_FROM</code>} (<code>model.go:1162-1167</code>); ≥1 required per new Responsibility, targets existence-checked before persist (<code>create_node.go:415-440</code>). <code>register_finding</code> goes further: it writes the Finding, mints <code>AFFECTS</code>/<code>FOUND_IN</code>, then <b>re-reads the edges and rolls the whole Finding back</b> if they failed to land — a rolled-back finding is never embedded, changelogged, or notified.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Add bundled-edge creation.</strong> Extend the store with a create-with-edges API and a lineage contract:</p>
+          <div class="code" data-file><span class="fname">server/internal/graph/contracts.go</span><pre><code>package graph
+
+import "fmt"
+
+var lineageEdges = map[string]bool{
+	"ORIGINATED_FROM": true, "GOVERNED_BY": true,
+	"SPAWNED_FROM": true, "DERIVED_FROM": true,
+}
+
+// BundledEdge is an edge requested as part of a create_node call.
+// Src "" means "the node being created".
+type BundledEdge struct {
+	Src, Dst, Type string
+}
+
+// CreateNodeWithEdges enforces per-type edge contracts, then writes
+// node + edges together. Responsibility: ≥1 lineage edge whose target
+// already exists.
+func (s *Store) CreateNodeWithEdges(n Node, edges []BundledEdge) error {
+	if n.Type == "Responsibility" {
+		hasLineage := false
+		for _, e := range edges {
+			if lineageEdges[e.Type] {
+				if _, err := s.GetNode(e.Dst); err != nil {
+					return fmt.Errorf("lineage_target_missing: %s: %w", e.Dst, err)
+				}
+				hasLineage = true
+			}
+		}
+		if !hasLineage {
+			return fmt.Errorf("lineage_required: a Responsibility must declare " +
+				"where it came from (ORIGINATED_FROM | GOVERNED_BY | SPAWNED_FROM | DERIVED_FROM)")
+		}
+	}
+	if err := s.CreateNode(n); err != nil {
+		return err
+	}
+	for _, e := range edges {
+		src := e.Src
+		if src == "" {
+			src = n.ID
+		}
+		if err := s.CreateEdge(src, e.Dst, e.Type); err != nil {
+			// verify-and-rollback: a node without its contract edges
+			// must not survive.
+			s.db.Exec(`DELETE FROM nodes WHERE id = ? AND project_id = ?`,
+				n.ID, s.projectID)
+			return fmt.Errorf("bundled_edge_failed (node rolled back): %w", err)
+		}
+	}
+	return nil
+}</code></pre></div>
+          <p>Add the four lineage edge types to <code>ValidEdgeTypes</code>. (Real nuance you're mirroring: some bundled edges are <em>inbound-only</em> and direction-checked; keep that in mind rather than in code for now.)</p></li>
+        <li><p><strong>Migrate the seed</strong> to the contract: <code>booking-core</code> must now be created with <code>GOVERNED_BY</code> pointing at a Decision — so first allocate a decision (<code>PDR</code>, title "Mini C2C booking flow"), then create the Responsibility with the bundled edge. Feel the ordering the contract imposes: <b>authority before work</b>.</p></li>
+        <li><p><strong>Test both failure modes:</strong> a Responsibility with no lineage edge → <code>lineage_required</code>; with a lineage edge to a ghost id → <code>lineage_target_missing</code> and (assert!) the node does not exist afterwards.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>Seed still runs clean end-to-end. The rollback test proves no orphan node survives a failed bundled edge.</p></div>
+      <div class="callout war"><h4>Why it exists</h4><p>Lineage answers the question every future maintainer asks: <em>why does this work exist?</em> In the real graph, ADR-053 made the quartet mandatory after unlabeled Responsibilities piled up with no traceable origin — the graph equivalent of code with no commit history.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week2" id="l24">
+    <summary><span class="lnum">2.4</span><span class="ltitle">Validators at the boundary</span><span class="lconcept">validator chains</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l24" aria-label="Mark lesson 2.4 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">Validation in DDE is not scattered <code>if</code> statements — it's <b>ordered chains of named validators</b> run at the write boundary, each returning either a structured rejection or nil. Two conventions make the pattern scale: errors lead with a machine-parseable code (<code>lineage_required: …</code> — you've been doing this since 2.1 without noticing), and every covered node type gets a plain-English <code>eli10</code> summary so the graph stays legible to humans.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>update_node.go:188-220</code> runs a 14-validator chain — the load-bearing one rejects any <code>status</code> key with "use update_status instead". <code>validate_eli10.go</code> checks: 80–350 bytes, single paragraph, no code fences, ≤2 inline-code spans, unexpanded acronyms only from a 23-entry allowlist. Presence is enforced when <code>ELI10_ENFORCE=1</code>; malformed values are always rejected. Errors follow the three-tier contract: <code>ToolError</code> with a leading code, sentinel errors, pinned JSON-RPC codes.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Define the chain type and refit <code>CreateNodeWithEdges</code>:</strong></p>
+          <div class="code" data-file><span class="fname">server/internal/graph/validators.go</span><pre><code>package graph
+
+import (
+	"fmt"
+	"strings"
+)
+
+// A Validator inspects a node about to be written and returns a
+// structured error ("code: message") or nil. Chains run in order;
+// first rejection wins.
+type Validator func(n Node) error
+
+var CreateValidators = []Validator{
+	validateKnownType,
+	validateEli10,
+	validateNoCallerStatus,
+}
+
+func validateKnownType(n Node) error {
+	if !ValidNodeTypes[n.Type] {
+		return fmt.Errorf("unknown_type: %q", n.Type)
+	}
+	return nil
+}
+
+// eli10 required on the PCC-surfaced types; always shape-checked.
+var eli10Types = map[string]bool{
+	"Responsibility": true, "Decision": true, "Finding": true,
+	"WorkPackage": true, "Pattern": true, "Verdict": true,
+}
+
+func validateEli10(n Node) error {
+	raw, ok := n.Props["eli10"].(string)
+	if !ok || raw == "" {
+		if eli10Types[n.Type] {
+			return fmt.Errorf("eli10_required: %s nodes carry a plain-English "+
+				"summary (80-350 chars) so operators can read the graph", n.Type)
+		}
+		return nil
+	}
+	if len(raw) &lt; 80 || len(raw) &gt; 350 {
+		return fmt.Errorf("eli10_length: got %d chars, want 80-350", len(raw))
+	}
+	if strings.Contains(raw, "\n\n") || strings.Contains(raw, "```") {
+		return fmt.Errorf("eli10_shape: single paragraph, no code fences")
+	}
+	return nil
+}
+
+// Terminal-ish statuses may not be set at create time; nodes are born
+// at the map's initial status and move via UpdateStatus.
+func validateNoCallerStatus(n Node) error {
+	if _, tracked := Transitions[n.Type]; tracked &amp;&amp; n.Status != "" {
+		if err := ValidateTransition(n.Type, "", n.Status); err != nil {
+			return fmt.Errorf("caller_supplied_status: %w", err)
+		}
+	}
+	return nil
+}</code></pre></div>
+          <p>Call the chain at the top of <code>CreateNodeWithEdges</code> (and <code>CreateNode</code>): <code>for _, v := range CreateValidators { if err := v(n); err != nil { return err } }</code>.</p></li>
+        <li><p><strong>Backfill your seed nodes with <code>eli10</code> values.</strong> Write real ones — e.g. for <code>booking-core</code>: <q>Takes a submitted booking request, checks it, and turns it into a real Contract with an SAP Contract Number, telling the rest of the system the moment that happens.</q> Feel how the constraint forces you to explain the node to a non-engineer.</p></li>
+        <li><p><strong>Guard the generic update path.</strong> Add an <code>UpdateNode(id string, props map[string]any)</code> that merges props but returns <code>status_via_update_node_forbidden: use update_status</code> if <code>props</code> contains a <code>status</code> key and the type is tracked. This closes the bypass you'd otherwise discover in week 6 the hard way.</p></li>
+        <li><p><strong>Test the chain order</strong>: a node that is both an unknown type <em>and</em> missing eli10 reports <code>unknown_type</code> (first validator wins); a valid Finding without eli10 is rejected; a 500-char eli10 is rejected with the measured length in the message.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint — end of week 2</h4><p>Every write path (create, update, status) is governed: grep your store for <code>UPDATE nodes SET status</code> — one hit, inside <code>UpdateStatus</code>. Error messages all lead with a <code>snake_case_code:</code>. Seed runs clean with eli10s on every surfaced node.</p></div>
+      <div class="callout war"><h4>Why it exists</h4><p>The eli10 layer sounds cosmetic until you watch an operator triage a graph of 400 nodes at 11pm. The PCC renders the eli10 as the <em>leading</em> line of every card — and renders a visible "no plain-English summary yet" badge when it's missing. Absence is surfaced, never hidden; that badge is the entire backfill-pressure mechanism. Governance: <code>ADR-eli10-pcc-nodes-ASXB</code>.</p></div>
+    </div>
+  </details>
+</section>

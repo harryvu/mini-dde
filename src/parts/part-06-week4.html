@@ -1,0 +1,304 @@
+<!-- ============================================================ WEEK 4 -->
+<section class="view" id="week4">
+  <header class="weekhead">
+    <p class="eyebrow">Week 4 · Part II — governance &amp; agents</p>
+    <h2>The MCP server</h2>
+    <p class="wintro">Agents don't get a database driver — they get <b>tools</b>. MCP (Model Context Protocol) is the interface: each graph operation becomes a named tool with a schema, validation runs at the tool boundary, and the server bakes in project identity so no agent can forget it. By Friday, Claude Code is reading and writing <em>your</em> graph.</p>
+    <ul class="wgoals">
+      <li><b>Concept:</b> tools as the agent interface; one registry, N transports</li>
+      <li><b>Build:</b> an MCP server over your store with mcp-go</li>
+      <li><b>Build:</b> full-text search; the graph-first rule</li>
+      <li><b>Milestone:</b> Claude Code drives your graph</li>
+    </ul>
+    <div class="wtools"><button data-expand="week4">Expand all lessons</button><button data-collapse="week4">Collapse all</button></div>
+  </header>
+
+  <details class="lesson" data-week="week4" id="l41">
+    <summary><span class="lnum">4.1</span><span class="ltitle">Stand up the MCP server</span><span class="lconcept">mcp-go</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l41" aria-label="Mark lesson 4.1 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">The real DDE server registers ~110 tools through <b>one registry function</b> and serves the identical surface over stdio and HTTP — the two transports can never drift because they construct the same server. Dependencies (the store, with project id baked in) enter as constructor closures, never globals. You'll clone that exact shape at 1/20th the tool count.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>builder/server/main.go:97-108</code>: <code>server.NewMCPServer("nexus-dde", "0.1.0")</code> (the same <code>mark3labs/mcp-go</code> library you're about to use) → <code>tools.RegisterAll(...)</code> → <code>server.ServeStdio(srv)</code>. The HTTP transport (<code>internal/mcphttp/handler.go</code>) wraps the <em>same</em> RegisterAll. Identity: <code>--config</code> flag → <code>NEXUS_DDE_CONFIG</code> env → default <code>.nexus-dde/project.yaml</code>; the store is constructed with <code>cfg.ProjectID</code> so every tool inherits scoping for free.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Add the dependencies</strong> (pin versions — MCP libraries move fast):</p>
+          <div class="code"><pre><code>cd server
+go get github.com/mark3labs/mcp-go@v0.32.0
+go get gopkg.in/yaml.v3</code></pre></div></li>
+        <li><p><strong>Read project identity from the config file</strong> — the same resolution order as the real server:</p>
+          <div class="code" data-file><span class="fname">server/internal/config/config.go</span><pre><code>package config
+
+import (
+	"fmt"
+	"os"
+
+	"gopkg.in/yaml.v3"
+)
+
+type Config struct {
+	ProjectID string `yaml:"project_id"`
+	DBPath    string `yaml:"db_path"`
+}
+
+// Load: MINIDDE_CONFIG env → default .minidde/project.yaml.
+func Load() (Config, error) {
+	path := os.Getenv("MINIDDE_CONFIG")
+	if path == "" {
+		path = ".minidde/project.yaml"
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return Config{}, fmt.Errorf("config_missing: %s — create it with a "+
+			"project_id before serving tools: %w", path, err)
+	}
+	var c Config
+	if err := yaml.Unmarshal(raw, &amp;c); err != nil {
+		return Config{}, fmt.Errorf("config_invalid: %w", err)
+	}
+	if c.ProjectID == "" {
+		return Config{}, fmt.Errorf("config_invalid: project_id is required")
+	}
+	if c.DBPath == "" {
+		c.DBPath = "minidde.db"
+	}
+	return c, nil
+}</code></pre></div>
+          <p>Add <code>db_path: "minidde.db"</code> to your <code>.minidde/project.yaml</code>.</p></li>
+        <li><p><strong>Create the registry skeleton and the <code>mcp</code> subcommand:</strong></p>
+          <div class="code" data-file><span class="fname">server/internal/tools/registry.go</span><pre><code>package tools
+
+import (
+	"github.com/mark3labs/mcp-go/server"
+
+	"minidde/server/internal/graph"
+)
+
+// RegisterAll wires every tool onto the server. ONE registry —
+// any transport that calls this serves the identical surface.
+func RegisterAll(srv *server.MCPServer, st *graph.Store) {
+	registerCRUDTools(srv, st)
+	registerQueryTools(srv, st)
+	registerLearningTools(srv, st) // findings, escalations (4.3)
+}</code></pre></div>
+          <div class="code" data-file><span class="fname">server/cmd/minidde/main.go (add the case)</span><pre><code>case "mcp":
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	st, err := graph.Open(cfg.DBPath, cfg.ProjectID)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	srv := server.NewMCPServer("mini-dde", "0.1.0")
+	tools.RegisterAll(srv, st)
+	return server.ServeStdio(srv)</code></pre></div>
+          <p>(Move the store-opening logic in <code>openStore()</code> to use <code>config.Load()</code> too — one identity source for CLI and MCP.)</p></li>
+        <li><p><strong>Register one heartbeat tool</strong> to prove the plumbing before the real surface lands — in <code>registerQueryTools</code>:</p>
+          <div class="code" data-file><span class="fname">server/internal/tools/query.go</span><pre><code>package tools
+
+import (
+	"context"
+	"encoding/json"
+
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
+
+	"minidde/server/internal/graph"
+)
+
+func jsonResult(v any) *mcp.CallToolResult {
+	b, _ := json.MarshalIndent(v, "", "  ")
+	return mcp.NewToolResultText(string(b))
+}
+
+func registerQueryTools(srv *server.MCPServer, st *graph.Store) {
+	srv.AddTool(
+		mcp.NewTool("query_node",
+			mcp.WithDescription("Get a single graph node by id."),
+			mcp.WithString("id", mcp.Required(), mcp.Description("node id")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			id, err := req.RequireString("id")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			n, err := st.GetNode(id)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return jsonResult(n), nil
+		},
+	)
+}</code></pre></div>
+          <p>Note the error convention: tool-level failures return <code>NewToolResultError</code> (the model sees the message and can react); only transport-level breakage returns a Go error. Your structured <code>code: message</code> errors from week 2 now pay off — the agent can parse them.</p></li>
+        <li><p><strong>Smoke-test over stdio</strong> without a client, using the MCP inspector:</p>
+          <div class="code"><pre><code>npx @modelcontextprotocol/inspector go run ./server/cmd/minidde mcp</code></pre></div>
+          <p>In the inspector UI: list tools → call <code>query_node</code> with <code>{"id": "booking-core"}</code> → your node comes back as JSON.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>Inspector lists <code>query_node</code>; a good id returns the node; a bad id returns your <code>node not found</code> error as a tool error, not a crash; deleting <code>.minidde/project.yaml</code> makes the server refuse to start with <code>config_missing</code>.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week4" id="l42">
+    <summary><span class="lnum">4.2</span><span class="ltitle">The core tool surface</span><span class="lconcept">tool registry</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l42" aria-label="Mark lesson 4.2 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">Now the real surface: the CRUD and lifecycle tools agents live on. The discipline that matters is <b>schema and handler side by side</b> — each <code>AddTool</code> call declares required params, enums, and descriptions the model reads, then the handler re-validates through your week-2 chains. Schema tells the model what to send; validators decide what's accepted. Belt and suspenders, on purpose.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>registry.go</code> groups 15 <code>register*</code> functions; every tool is declarative <code>srv.AddTool(mcp.NewTool("name", mcp.WithString(..., mcp.Required())), HandleX(store))</code>. The description strings double as agent documentation — read <code>create_node</code>'s in the real repo and notice it teaches the edge contracts inline.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Implement the CRUD group.</strong> Six tools in <code>server/internal/tools/crud.go</code>, all delegating to store methods you already have:</p>
+          <div class="code" data-file><span class="fname">server/internal/tools/crud.go (shape — write all six)</span><pre><code>func registerCRUDTools(srv *server.MCPServer, st *graph.Store) {
+	srv.AddTool(
+		mcp.NewTool("create_node",
+			mcp.WithDescription("Create a graph node (idempotent merge). "+
+				"Responsibility nodes REQUIRE at least one lineage edge in "+
+				"'edges' (ORIGINATED_FROM | GOVERNED_BY | SPAWNED_FROM | "+
+				"DERIVED_FROM). PCC-surfaced types require props.eli10 "+
+				"(80-350 chars plain English)."),
+			mcp.WithString("node_type", mcp.Required()),
+			mcp.WithString("id", mcp.Required()),
+			mcp.WithObject("props"),
+			mcp.WithArray("edges",
+				mcp.Description(`bundled edges: [{"dst":"...","type":"GOVERNED_BY"}]`)),
+		),
+		handleCreateNode(st),
+	)
+	// ...and: create_edge(src, dst, type)
+	//         update_node(id, props)        — rejects props.status
+	//         update_status(id, to, reason) — reason REQUIRED
+	//         query_all(node_type, status?)
+	//         neighbors(id, dir, type?)
+}</code></pre></div>
+          <p>For <code>create_node</code>'s handler, decode <code>props</code> with <code>req.GetArguments()["props"]</code> (assert to <code>map[string]any</code>), map the <code>edges</code> array into <code>[]graph.BundledEdge</code>, and call <code>CreateNodeWithEdges</code>. Every store error goes back via <code>NewToolResultError(err.Error())</code> — your structured codes ride through intact.</p></li>
+        <li><p><strong>Make <code>update_status</code> teach its own remedy.</strong> When <code>ValidateTransition</code> rejects, wrap the message: append the list of legal next statuses from the map. An agent that reads <code>invalid_transition: … legal from BUILDING: [BUILT IN_REVIEW BLOCKED]</code> self-corrects in one turn instead of three.</p></li>
+        <li><p><strong>Add <code>register_decision</code> and <code>allocate_decision_id</code></strong> in a <code>governance.go</code> group — thin wrappers over week 3's store methods. The allocator tool is how agents will mint CIR/xDR ids in week 7's skills; caller-supplied decision ids get <code>NewToolResultError("caller_supplied_id_forbidden: ids are server-allocated")</code>.</p></li>
+        <li><p><strong>Re-run the inspector</strong> and drive a full mini-flow by hand: allocate a decision id → create a Responsibility governed by it → walk it NOT_STARTED→DESIGNING with reasons → query it back. You are now doing, by hand, exactly what an agent will do autonomously in week 7.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>Ten-ish tools listed. The full by-hand flow works in the inspector. <code>update_status</code> with a bad target returns the legal-next-statuses hint. <code>update_node</code> with a <code>status</code> prop is refused.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week4" id="l43">
+    <summary><span class="lnum">4.3</span><span class="ltitle">Search &amp; the graph-first habit</span><span class="lconcept">search</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l43" aria-label="Mark lesson 4.3 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">"Query the graph before searching files" only works if the graph is queryable by <em>meaning-ish</em> lookups, not just by id. The real system has two search tools — keyword full-text and semantic/vector — with a routing rule (semantic for concepts, keyword for exact tokens, always bound the result set). You'll build the keyword half with SQLite FTS5 and encode the routing rule as agent context.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>search</code> (full-text, returns full node bodies — always pass <code>node_types</code> and a small <code>limit</code>) vs <code>semantic_search</code> (Qdrant vectors, lighter payloads, the default for concept lookups) — the selection discipline is <code>.claude/rules/bld-mcp-routing.md</code> § "Tool selection". The learning tools (<code>register_finding</code>, <code>register_escalation</code>, <code>resolve_*</code>) live in their own registry group.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Add an FTS5 index</strong> kept in sync at write time. In <code>store.go</code>'s schema:</p>
+          <div class="code"><pre><code>CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts
+  USING fts5(id UNINDEXED, project_id UNINDEXED, body);</code></pre></div>
+          <p>At the end of <code>CreateNode</code> and <code>UpdateNode</code>, upsert the searchable text (delete-then-insert by id is fine):</p>
+          <div class="code" data-file><span class="fname">server/internal/graph/search.go</span><pre><code>package graph
+
+import (
+	"encoding/json"
+	"fmt"
+)
+
+func (s *Store) indexNode(n Node) {
+	body, _ := json.Marshal(n.Props)
+	s.db.Exec(`DELETE FROM nodes_fts WHERE id = ? AND project_id = ?`,
+		n.ID, s.projectID)
+	s.db.Exec(`INSERT INTO nodes_fts (id, project_id, body) VALUES (?, ?, ?)`,
+		n.ID, s.projectID, n.ID+" "+string(body))
+}
+
+// Search: keyword full-text, bounded. limit &lt;= 20 — an unbounded
+// search result is a context-window attack on your own agent.
+func (s *Store) Search(query, nodeType string, limit int) ([]Node, error) {
+	if limit &lt;= 0 || limit &gt; 20 {
+		limit = 10
+	}
+	rows, err := s.db.Query(`
+		SELECT f.id FROM nodes_fts f
+		JOIN nodes n ON n.id = f.id AND n.project_id = f.project_id
+		WHERE f.project_id = ? AND nodes_fts MATCH ?
+		  AND (? = '' OR n.type = ?)
+		LIMIT ?`, s.projectID, query, nodeType, nodeType, limit)
+	if err != nil {
+		return nil, fmt.Errorf("search: %w", err)
+	}
+	defer rows.Close()
+	var out []Node
+	for rows.Next() {
+		var id string
+		rows.Scan(&amp;id)
+		if n, err := s.GetNode(id); err == nil {
+			out = append(out, n)
+		}
+	}
+	return out, rows.Err()
+}</code></pre></div></li>
+        <li><p><strong>Expose the learning group as tools:</strong> <code>search(query, node_type?, limit?)</code>, <code>register_finding</code> (all six fields required in the schema — let the schema teach the contract), <code>resolve_finding</code>, <code>confirm_finding</code>, <code>register_escalation</code>, <code>resolve_escalation</code>, <code>check_deferral</code>. All thin wrappers over week 3's store methods, in <code>server/internal/tools/learning.go</code>.</p></li>
+        <li><p><strong>Add <code>query_responsibility</code></strong> — the first <em>composite</em> read: given an id, return the node + its work packages (via <code>BELONGS_TO</code> in-edges) + governing decisions (<code>GOVERNED_BY</code> out-edges) + open findings (<code>AFFECTS</code> in-edges, status OPEN). One tool call answering "tell me everything about this work" is the seed of week 5's context packages.</p></li>
+        <li><p><strong>Reindex your seed</strong> (drop <code>minidde.db</code>, re-run seed + registrations) and verify in the inspector: <code>search</code> for "booking" finds the Responsibility and the PDR; with <code>node_type: "Decision"</code> only the PDR.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p><code>search("contract", "", 10)</code> returns bounded, relevant results; <code>query_responsibility("booking-core")</code> returns node + WPs + decisions + findings in one payload.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week4" id="l44">
+    <summary><span class="lnum">4.4</span><span class="ltitle">Wire up Claude Code</span><span class="lconcept">.mcp.json</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l44" aria-label="Mark lesson 4.4 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">The last mile: register your server with Claude Code, hand the agent a rules file that encodes the working discipline, and watch it drive your graph. This is the moment mini-DDE stops being a database project and becomes an <b>agent platform</b>.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>.mcp.json</code> registers the <code>dde</code> server (short name mandated by an enterprise whitelist — names are governance too). <code>.claude/rules/bld-knowledge-graph-first.md</code> and <code>bld-mcp-routing.md</code> are always-loaded; <code>bld-use-mcp-tools-directly.md</code> bans piping JSON-RPC into the binary. A PreToolUse hook blocks every <code>mcp__dde__*</code> call when the identity file is missing — you'll build that hook in week 6.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Register the server</strong> at the repo root:</p>
+          <div class="code" data-file><span class="fname">.mcp.json</span><pre><code>{
+  "mcpServers": {
+    "minidde": {
+      "type": "stdio",
+      "command": "go",
+      "args": ["run", "./server/cmd/minidde", "mcp"],
+      "env": {}
+    }
+  }
+}</code></pre></div></li>
+        <li><p><strong>Write the context-plane rule</strong> — your first <code>.claude/rules/</code> file, citing its authority like the real ones do:</p>
+          <div class="code" data-file><span class="fname">.claude/rules/graph-first.md</span><pre><code># Knowledge Graph First
+
+&lt;implements&gt;
+  &lt;xdr&gt;ADR-sqlite-mini-dde-graph-&lt;your-suffix&gt;&lt;/xdr&gt;
+&lt;/implements&gt;
+
+The mini-DDE graph is the source of truth. Query it before searching files.
+
+- `query_responsibility(id)` before working on any Responsibility
+- `search(query, node_type, limit)` for concept lookups — ALWAYS pass a limit
+- Register findings via `register_finding` — never TODOs in code comments
+- Change status ONLY via `update_status` (never `update_node`)
+- When you hit a question only the human can answer, `register_escalation`
+  with &gt;=2 explicit options and STOP.</code></pre></div></li>
+        <li><p><strong>Connect and verify.</strong> Start (or restart) Claude Code in <code>mini-dde/</code>, run <code>/mcp</code> to confirm <code>minidde</code> is attached, then give it real work, one prompt at a time:</p>
+          <div class="code"><pre><code># prompt 1 — read path
+"Query the graph for everything about booking-core and summarize its state."
+
+# prompt 2 — write path with governance
+"Create a Responsibility 'billing-core' (domain billing) governed by our
+capstone PDR, with a proper eli10. Then move it to NOT_STARTED."
+
+# prompt 3 — the learning loop
+"Review server/internal/graph/*.go for error-handling gaps. Register a
+finding for the worst one you find, severity medium, affecting booking-core."</code></pre></div></li>
+        <li><p><strong>Watch for the two classic failures</strong> and enjoy your guards catching them: the agent inventing its own finding id (blocked — server allocates), and the agent trying <code>update_node</code> with a status (blocked with the remedy in the message). When a guard fires, read the transcript: the structured error told the agent how to self-correct. That's the design working.</p></li>
+        <li><p><strong>Commit everything</strong>, including <code>.mcp.json</code> and the rules file — agent context is code.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint — end of week 4</h4><p>All three prompts succeed with the agent using only MCP tools (no sqlite3 shell calls — check the transcript). <code>ls --type Finding</code> shows the agent's finding, edges intact, id server-minted.</p></div>
+      <div class="callout war"><h4>Why it exists</h4><p>Why ban piping JSON-RPC into the binary when tools exist? Because a second access path is a second place where validation can drift — the real rule exists because agents <em>did</em> discover <code>echo '{"jsonrpc"...}' | go run .</code> as a workaround when a tool was missing. Every capability gap becomes an escalation, never a bypass.</p></div>
+    </div>
+  </details>
+</section>

@@ -1,0 +1,366 @@
+<!-- ============================================================ WEEK 7 -->
+<section class="view" id="week7">
+  <header class="weekhead">
+    <p class="eyebrow">Week 7 · Part III — the delivery machine</p>
+    <h2>The pipeline &amp; the mini-PCC</h2>
+    <p class="wintro">Two halves of the same idea: <b>process as data</b>. Skills encode multi-phase workflows as executable documents agents must follow completely; agent sessions make work claims atomic and auditable; and the Process Control Center renders the whole pipeline for the human operator — who acts only at decision points, because <em>the server derives, the UI projects</em>.</p>
+    <ul class="wgoals">
+      <li><b>Concept:</b> skills, phase discipline, premature completion as violation</li>
+      <li><b>Build:</b> <code>assign_agent</code> / <code>claim_work</code> (atomic) / <code>complete_agent</code></li>
+      <li><b>Build:</b> the process HTTP API (Go)</li>
+      <li><b>Build:</b> a Next.js mini-PCC: journey map + findings console</li>
+    </ul>
+    <div class="wtools"><button data-expand="week7">Expand all lessons</button><button data-collapse="week7">Collapse all</button></div>
+  </header>
+
+  <details class="lesson" data-week="week7" id="l71">
+    <summary><span class="lnum">7.1</span><span class="ltitle">Skills: process as executable documents</span><span class="lconcept">SKILL.md</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l71" aria-label="Mark lesson 7.1 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">A <b>skill</b> is a markdown file that IS the process: numbered phases, gate checks between them, exact graph mutations per phase, and a defined terminal state. The enforcement doctrine is strict: load the skill before doing anything else, execute every phase, pass every gate, and end by closing your agent session. <em>Premature completion is a process violation even when the output is correct</em> — each phase catches a different failure class, and skipping one ships those failures downstream.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>.claude/skills/bld-*/SKILL.md</code> — 100+ skills; the ideation funnel alone is <code>bld-ideate</code> (423 lines: forcing questions → similarity check → server-allocated CIR id → content-gated redeem) → <code>bld-challenge</code> (adversarial validation, ≥2 implementation alternatives mandatory) → <code>bld-promote</code> (CIR → formal xDR, with a verify-or-mark contract on every graph write). The binding rule is <code>.claude/rules/bld-skill-enforcement.md</code>; sensitive skills set <code>disable-model-invocation: true</code> so only an explicit slash command can trigger them.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Give CIRs a lifecycle.</strong> Add to your <code>Transitions</code> map (this rides the Decision node with <code>doc_type: "cir"</code> — for the mini, key the map decision: give CIR its own node-type-level check inside <code>UpdateStatus</code> when <code>doc_type=="cir"</code>):</p>
+          <div class="code"><pre><code>"CIR": {
+	"":           {"exploring"},
+	"exploring":  {"challenged", "parked"},
+	"challenged":  {"validated", "parked", "rejected"},
+	"validated":  {"promoted", "parked"},
+	"parked":     {"exploring"},
+	// promoted, rejected: terminal
+},</code></pre></div></li>
+        <li><p><strong>Write <code>mini-ideate</code></strong> — your first skill:</p>
+          <div class="code" data-file><span class="fname">.claude/skills/mini-ideate/SKILL.md</span><pre><code>---
+name: mini-ideate
+description: Turn a raw idea into a CIR (Conceptual Idea Record) in the
+  mini-DDE graph and on disk. Use when the operator says "capture this
+  idea" / "new CIR".
+---
+
+# mini-ideate — idea → CIR
+
+Follow EVERY phase in order. Do not skip. Do not declare done early.
+
+## Phase 1 — Interview
+Ask the operator (AskUserQuestion) until you can state: the problem,
+who has it, the smallest version worth building, and one way this idea
+could be WRONG. No fabrication: if the operator doesn't know, record
+"unknown".
+
+## Phase 2 — Similarity check  [gate]
+`search(&lt;key phrases&gt;, "Decision", 5)`. If an existing CIR/xDR covers
+this, STOP and report it — duplicate capture is a process failure.
+
+## Phase 3 — Allocate + write
+1. `allocate_decision_id(type="cir", title=&lt;title&gt;)` — NEVER hand-craft ids.
+2. Write `docs/cir/&lt;id-lowercase&gt;.md` from the template: Context /
+   Idea / Riskiest assumption / Smallest test.
+3. `register_decision(id, "cir", path, title, eli10)`.
+4. `update_status(id, "exploring", "captured via mini-ideate")`.
+
+## Phase 4 — Report
+Show the operator: the id, the file path, the riskiest assumption, and
+the recommended next step (/mini-challenge). Done means: file on disk,
+node in graph, status exploring — verify all three by reading them back.</code></pre></div></li>
+        <li><p><strong>Write <code>mini-promote</code></strong> in the same shape (<code>.claude/skills/mini-promote/SKILL.md</code>): Phase 1 verify the CIR is <code>validated</code> (STOP otherwise); Phase 2 classify the record type by the week-3 disambiguators (ADR? PDR? DDR? WoW?) and ask the operator to confirm; Phase 3 allocate the new id, write the record from the type's template, register it, <code>create_edge(cir → new, PROMOTES_TO)</code>; Phase 4 flip the CIR to <code>promoted</code> and write the promoted-to pointer back into the CIR file. <b>Verify-or-mark:</b> after every graph write, read it back; if a write can't be verified, say so loudly and stop — never report success on faith.</p></li>
+        <li><p><strong>Run the funnel for real.</strong> In Claude Code: <code>/mini-ideate</code> with a genuine idea you had during the course (there's a backlog in your head by now — "the CLI should validate JSON props before sending", "search should rank title hits higher"). Then challenge it yourself as DA (does it survive the riskiest assumption?), <code>update_status → validated</code> with your reasoning, and <code>/mini-promote</code> it into a real record.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>The full funnel ran: CIR file + node (exploring → validated → promoted), a PROMOTES_TO edge, a new Accepted-able record — and the transcript shows the agent following phases in order, including reading its writes back.</p></div>
+      <div class="callout war"><h4>Why it exists</h4><p>The real <code>bld-promote</code> gained its verify-or-mark contract after hosted graph writes silently failed mid-skill: the skill reported success, the graph disagreed, and the drift surfaced days later. Now every mandated write is read back, and an unverified write leaves a marker file and holds the CIR flip. Distributed-systems humility, applied to process tooling.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week7" id="l72">
+    <summary><span class="lnum">7.2</span><span class="ltitle">Agent sessions &amp; claiming work</span><span class="lconcept">claim_work</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l72" aria-label="Mark lesson 7.2 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">When multiple builders run in parallel (week 8's waves!), "who is working on what" must be graph state, not vibes. An <b>AgentSession</b> node with a <code>WORKS_ON</code> edge is minted per dispatch; <code>claim_work</code> is an <b>atomic compare-and-set</b> so two builders can never claim the same work package; <code>complete_agent</code> closes the session and refuses a "completed" status without a real summary — the server-side backstop against agents declaring victory on faith.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>assign_agent</code> mints the session + WORKS_ON edges; <code>claim_work</code> delegates to <code>store.ClaimWork</code> — claim + session creation in one transaction; <code>complete_agent</code> validates the AgentSession transition map <em>and requires a <code>[SESSION_AUDIT_RUN:</code> marker in the result summary</em> before accepting "completed" — a server-side check backing a client-side hook. Completion triggers the responsibility-status rollup recompute.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Implement the trio</strong> in <code>server/internal/graph/sessions.go</code>:</p>
+          <div class="code" data-file><span class="fname">server/internal/graph/sessions.go</span><pre><code>package graph
+
+import (
+	"fmt"
+
+	"github.com/google/uuid"
+)
+
+func (s *Store) AssignAgent(agentType, respID string) (string, error) {
+	if _, err := s.GetNode(respID); err != nil {
+		return "", err
+	}
+	id := "session-" + uuid.NewString()
+	if err := s.CreateNode(Node{ID: id, Type: "AgentSession", Status: "active",
+		Props: map[string]any{"agent_type": agentType}}); err != nil {
+		return "", err
+	}
+	return id, s.CreateEdge(id, respID, EdgeWorksOn)
+}
+
+// ClaimWork: atomic compare-and-set. The UPDATE only wins if the WP
+// is still NOT_STARTED — rows-affected 0 means someone beat us to it.
+func (s *Store) ClaimWork(sessionID, wpID string) (bool, error) {
+	res, err := s.db.Exec(`
+		UPDATE nodes SET status = 'BUILDING',
+		  updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+		WHERE id = ? AND project_id = ? AND type = 'WorkPackage'
+		  AND status IN ('NOT_STARTED','SPECIFIED')`,
+		wpID, s.projectID)
+	if err != nil {
+		return false, fmt.Errorf("claim: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return false, nil // already claimed — not an error, a race lost
+	}
+	// Record the claim: changelog + WORKS_ON, best-effort but loud.
+	s.db.Exec(`INSERT INTO changelog (project_id,node_id,from_status,to_status,reason,at)
+		VALUES (?,?,?,?,?,strftime('%Y-%m-%dT%H:%M:%SZ','now'))`,
+		s.projectID, wpID, "NOT_STARTED", "BUILDING", "claimed by "+sessionID)
+	return true, s.CreateEdge(sessionID, wpID, EdgeWorksOn)
+}
+
+func (s *Store) CompleteAgent(sessionID, status, summary string) error {
+	if status == "completed" &amp;&amp; len(summary) &lt; 40 {
+		return fmt.Errorf("summary_required: 'completed' needs a real result "+
+			"summary (&gt;=40 chars) — what shipped, what's left, how you verified")
+	}
+	if status != "completed" &amp;&amp; status != "failed" {
+		return fmt.Errorf("bad_terminal: completed | failed")
+	}
+	if err := s.UpdateNode(sessionID, map[string]any{"result_summary": summary}); err != nil {
+		return err
+	}
+	return s.UpdateStatus(sessionID, status, "agent session closed")
+}</code></pre></div>
+          <p>Add an AgentSession transition map (<code>"" → active; active → {completed, failed}</code>). Note the deliberate exception to your own week-2 law: <code>ClaimWork</code> writes status directly inside its atomic statement — <em>because the CAS and the transition are the same write</em>. Document that exception in the code and in a one-line WoW record; undocumented exceptions are how disciplines die.</p></li>
+        <li><p><strong>Expose all three as tools</strong> plus <code>query_available_work()</code>: WPs whose status is NOT_STARTED/SPECIFIED and whose wave is the lowest incomplete wave — the planner's output becoming the dispatcher's input.</p></li>
+        <li><p><strong>Race it.</strong> A test that fires 10 goroutines at <code>ClaimWork</code> for the same WP: exactly one true, nine false, status BUILDING once. This test is the whole reason CAS exists — and SQLite's single-writer model makes it pass; know that this is where the real system leans on Neo4j transactions instead.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>Race test green (run with <code>-race</code>); <code>complete_agent("completed", "done")</code> is refused for the thin summary; the session graph shows who touched what, when, and what they claimed happened.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week7" id="l73">
+    <summary><span class="lnum">7.3</span><span class="ltitle">The process API (HTTP plane)</span><span class="lconcept">/api/pipeline</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l73" aria-label="Mark lesson 7.3 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">The PCC doesn't speak MCP — it speaks HTTP. The real UI runs on two data planes (a Go "process server" REST API for computed reads and all mutations; GraphQL for deep relationship walks); your mini needs only the REST plane. The key design rule carries over whole: <b>status→stage mapping is served by the API</b>, not hardcoded in the UI — the server owns the lifecycle's shape.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p>A Go process server on :13000 serves <code>/api/pipeline</code>, <code>/api/lifecycle</code>, <code>/api/findings</code>, <code>/api/health</code>, <code>/api/attention</code>… and all DA mutations; Apollo/Neo4j GraphQL on :4000 serves the deep walks (<code>@relationship</code> directives auto-generate resolvers). The UI is pull-based with push-driven cache invalidation over a <code>/ws/state</code> WebSocket; the Journey Map fetches its stage definitions from <code>/api/lifecycle</code> with a hardcoded fallback.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Build the HTTP plane:</strong></p>
+          <div class="code" data-file><span class="fname">server/internal/httpapi/server.go</span><pre><code>package httpapi
+
+import (
+	"encoding/json"
+	"net/http"
+	"strings"
+
+	"minidde/server/internal/graph"
+)
+
+type Stage struct {
+	Key      string   `json:"key"`
+	Label    string   `json:"label"`
+	Statuses []string `json:"statuses"`
+}
+
+// The server owns the lifecycle's shape — the UI renders whatever
+// this says, so a lifecycle change never needs a frontend deploy.
+var Lifecycle = []Stage{
+	{Key: "backlog", Label: "Backlog", Statuses: []string{"NOT_STARTED"}},
+	{Key: "design", Label: "Design", Statuses: []string{"DESIGNING", "DESIGN_COMPLETE"}},
+	{Key: "build", Label: "Build", Statuses: []string{"BUILDING", "BUILT"}},
+	{Key: "review", Label: "Review", Statuses: []string{"IN_REVIEW", "FIXING"}},
+	{Key: "integrate", Label: "Integrate", Statuses: []string{"INTEGRATING"}},
+	{Key: "complete", Label: "Complete", Statuses: []string{"COMPLETE"}},
+}
+
+func New(st *graph.Store) http.Handler {
+	mux := http.NewServeMux()
+	writeJSON := func(w http.ResponseWriter, v any) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(v)
+	}
+
+	mux.HandleFunc("GET /api/lifecycle", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, Lifecycle)
+	})
+
+	mux.HandleFunc("GET /api/pipeline", func(w http.ResponseWriter, r *http.Request) {
+		resps, err := st.QueryAll("Responsibility", "")
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		writeJSON(w, resps)
+	})
+
+	mux.HandleFunc("GET /api/findings", func(w http.ResponseWriter, r *http.Request) {
+		findings, err := st.QueryAll("Finding", r.URL.Query().Get("status"))
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		writeJSON(w, findings)
+	})
+
+	mux.HandleFunc("GET /api/responsibilities/{id}", func(w http.ResponseWriter, r *http.Request) {
+		pkg, err := st.AssembleContext(r.PathValue("id"))
+		if err != nil {
+			status := 500
+			if strings.Contains(err.Error(), "not found") {
+				status = 404
+			}
+			http.Error(w, err.Error(), status)
+			return
+		}
+		writeJSON(w, pkg)
+	})
+
+	// The ONE operator mutation of the mini-PCC: resolve a finding.
+	mux.HandleFunc("POST /api/findings/{id}/resolve", func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ Resolution, VerificationNote string }
+		json.NewDecoder(r.Body).Decode(&amp;body)
+		if err := st.ResolveFinding(r.PathValue("id"), body.Resolution,
+			"decision-authority", body.VerificationNote); err != nil {
+			http.Error(w, err.Error(), 422)
+			return
+		}
+		writeJSON(w, map[string]bool{"ok": true})
+	})
+
+	return cors(mux)
+}
+
+func cors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(204)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}</code></pre></div></li>
+        <li><p><strong>Add the <code>serve</code> subcommand</strong> to the CLI: open the store via <code>config.Load()</code>, <code>http.ListenAndServe(":13000", httpapi.New(st))</code>, with <code>signal.NotifyContext</code> + graceful <code>server.Shutdown</code> (the composition-root pattern from the real services — <code>cmd/</code> only wires).</p></li>
+        <li><p><strong>Smoke-test with curl:</strong> <code>curl -s localhost:13000/api/pipeline | jq '.[].id'</code>; resolve a finding via POST and watch it move; confirm a 49-char resolution comes back as a 422 with your structured message — the HTTP plane runs the <em>same</em> validators as the MCP plane, because both are thin wrappers over one store. That's the architecture lesson of the whole week.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>All five endpoints answer; validation errors surface as 422 with the code intact; killing the server mid-request drains gracefully.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week7" id="l74">
+    <summary><span class="lnum">7.4</span><span class="ltitle">The mini-PCC (Next.js)</span><span class="lconcept">journey map</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l74" aria-label="Mark lesson 7.4 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">The PCC's UX doctrine in three lines: <b>pipeline-as-place</b> (each Responsibility card sits in its lifecycle-stage column — the UI is the process documentation); <b>the server derives, the UI projects</b> (no status computation client-side, ever); and <b>operators act only at decision points</b> (the only writes on screen are DA actions — everything else is read-only observation of agents working). You'll build three screens that carry all three ideas.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>builder/ui/</code> — Vite + React 19; the Journey Map (<code>JourneyMap.tsx</code>, 2,333 lines) renders stage columns with convergence orbits, iteration trails from GateEvidence, and outcome clustering; Mission Control is the findings-first triage cockpit; <code>Eli10Block</code> renders the plain-English line above every dense field — with a visible "no plain-English summary yet" badge when missing. Rollups (<code>outcomerollup</code>, <code>respstatusrollup</code>) are Go packages — the sole writers of derived status.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Scaffold:</strong> <code>npx create-next-app@latest pcc --typescript --app --tailwind --no-src-dir</code>, then <code>cd pcc &amp;&amp; npm i @tanstack/react-query</code>. Add a typed API client:</p>
+          <div class="code" data-file><span class="fname">pcc/lib/api.ts</span><pre><code>const API = "http://localhost:13000/api";
+
+export type Node = {
+  id: string; type: string; status: string;
+  props: Record&lt;string, unknown&gt;;
+};
+export type Stage = { key: string; label: string; statuses: string[] };
+
+async function get&lt;T&gt;(path: string): Promise&lt;T&gt; {
+  const r = await fetch(`${API}${path}`);
+  if (!r.ok) throw new Error(`${path}: ${r.status} ${await r.text()}`);
+  return r.json();
+}
+
+export const api = {
+  lifecycle: () =&gt; get&lt;Stage[]&gt;("/lifecycle"),
+  pipeline: () =&gt; get&lt;Node[]&gt;("/pipeline"),
+  findings: (status?: string) =&gt;
+    get&lt;Node[]&gt;(`/findings${status ? `?status=${status}` : ""}`),
+  responsibility: (id: string) =&gt; get&lt;unknown&gt;(`/responsibilities/${id}`),
+  resolveFinding: (id: string, resolution: string, verificationNote: string) =&gt;
+    fetch(`${API}/findings/${id}/resolve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ Resolution: resolution, VerificationNote: verificationNote }),
+    }).then(async (r) =&gt; {
+      if (!r.ok) throw new Error(await r.text());
+    }),
+};</code></pre></div></li>
+        <li><p><strong>Build the Journey Map</strong> (<code>app/page.tsx</code> + a client component). Columns come from <code>/api/lifecycle</code> — never hardcode them; cards land in the column whose <code>statuses</code> contains their status; each card shows name, status chip, wave badge, and the <b>eli10 as the leading line</b> — with a visible <em>"no plain-English summary yet"</em> badge when absent (absence surfaced, never hidden). Poll with TanStack Query:</p>
+          <div class="code" data-file><span class="fname">pcc/app/journey.tsx (core shape)</span><pre><code>"use client";
+import { useQuery } from "@tanstack/react-query";
+import { api, type Node, type Stage } from "@/lib/api";
+
+export default function Journey() {
+  const stages = useQuery({ queryKey: ["lifecycle"], queryFn: api.lifecycle });
+  const pipeline = useQuery({
+    queryKey: ["pipeline"],
+    queryFn: api.pipeline,
+    refetchInterval: 5000, // the PCC itself polls where freshness matters
+  });
+  if (!stages.data || !pipeline.data) return &lt;p&gt;Loading pipeline…&lt;/p&gt;;
+
+  const inStage = (s: Stage) =&gt;
+    pipeline.data.filter((n) =&gt; s.statuses.includes(n.status));
+
+  return (
+    &lt;div className="grid auto-cols-fr grid-flow-col gap-3 p-4"&gt;
+      {stages.data.map((s) =&gt; (
+        &lt;section key={s.key} className="rounded-xl border p-2"&gt;
+          &lt;h2 className="text-xs font-bold uppercase tracking-wide"&gt;
+            {s.label} · {inStage(s).length}
+          &lt;/h2&gt;
+          {inStage(s).map((n) =&gt; (
+            &lt;Card key={n.id} node={n} /&gt;
+          ))}
+        &lt;/section&gt;
+      ))}
+    &lt;/div&gt;
+  );
+}
+
+function Card({ node }: { node: Node }) {
+  const eli10 = node.props.eli10 as string | undefined;
+  return (
+    &lt;a href={`/responsibility/${node.id}`}
+       className="mt-2 block rounded-lg border p-2 hover:border-violet-500"&gt;
+      &lt;p className="text-sm font-semibold"&gt;{String(node.props.name ?? node.id)}&lt;/p&gt;
+      {eli10 ? (
+        &lt;p className="mt-1 text-xs opacity-70"&gt;{eli10}&lt;/p&gt;
+      ) : (
+        &lt;p className="mt-1 text-xs italic text-amber-600"&gt;
+          no plain-English summary yet
+        &lt;/p&gt;
+      )}
+      &lt;p className="mt-1 font-mono text-[10px] opacity-60"&gt;
+        {node.status}{node.props.wave ? ` · wave ${node.props.wave}` : ""}
+      &lt;/p&gt;
+    &lt;/a&gt;
+  );
+}</code></pre></div>
+          <p>(Wrap the app in a <code>QueryClientProvider</code> in <code>app/providers.tsx</code> — standard TanStack setup.)</p></li>
+        <li><p><strong>Build Mission Control</strong> (<code>/control</code>): a findings table faceted by severity × status, and the one DA action — a <b>Resolve</b> button opening a small form (resolution + verification note) that calls <code>api.resolveFinding</code> and invalidates the query. Surface a rejection (thin resolution → 422) as the server's own message; the UI never re-implements validation it can borrow.</p></li>
+        <li><p><strong>Build the Responsibility workspace</strong> (<code>/responsibility/[id]</code>): render the context package — spec excerpt, events consumed/produced with schema <code>&lt;details&gt;</code>, governing decisions, work packages with status+wave, open findings. One page that answers "tell me everything" — the deep-walk view the real system serves over GraphQL, served here by your REST composite.</p></li>
+        <li><p><strong>Demo the loop end to end:</strong> <code>go run ./server/cmd/minidde serve</code> + <code>npm run dev</code>, journey map on screen; in a second terminal ask Claude Code to walk a Responsibility through a transition (through the gates!); watch the card change columns within 5s. Then resolve a finding from Mission Control and verify the graph changed (<code>ls --type Finding</code>).</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint — end of week 7</h4><p>Three screens live; columns are API-driven; missing eli10s show the badge; the DA resolve action round-trips through the same validators as MCP; a graph change from an agent appears on screen without a refresh.</p></div>
+      <div class="callout war"><h4>Why it exists</h4><p>The respstatusrollup engine in the real system can self-heal a lagging Responsibility status from evidence — but it is capped at IN_REVIEW and can <em>never</em> mint COMPLETE, and it no-ops rather than dragging a status down. Derived state has one writer, terminal states stay on the gated path, and the UI renders whatever the server says: this division is what keeps a control panel honest when both humans and agents are mutating the world under it.</p></div>
+    </div>
+  </details>
+</section>

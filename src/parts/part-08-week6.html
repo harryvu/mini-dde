@@ -1,0 +1,386 @@
+<!-- ============================================================ WEEK 6 -->
+<section class="view" id="week6">
+  <header class="weekhead">
+    <p class="eyebrow">Week 6 · Part III — the delivery machine</p>
+    <h2>Gates &amp; enforcement</h2>
+    <p class="wintro">Process that lives in prose gets skipped under pressure — always, by humans and agents alike. This week you make your pipeline <b>mechanically honest</b>: gates are named condition sets a Responsibility must pass to advance; evidence is submitted and validated, never asserted; reviewer verdicts gate phases; and Claude Code hooks make "skip the gate" structurally impossible rather than merely forbidden.</p>
+    <ul class="wgoals">
+      <li><b>Concept:</b> a gate protects an <em>exit</em>, and evidence beats assertion</li>
+      <li><b>Build:</b> <code>check_gate</code> / <code>submit_gate_evidence</code> / <code>update_dod</code></li>
+      <li><b>Build:</b> <code>record_verdict</code> + the reviewer ensemble</li>
+      <li><b>Build:</b> exit-2 hooks + a sectioned pre-commit</li>
+    </ul>
+    <div class="wtools"><button data-expand="week6">Expand all lessons</button><button data-collapse="week6">Collapse all</button></div>
+  </header>
+
+  <details class="lesson" data-week="week6" id="l61">
+    <summary><span class="lnum">6.1</span><span class="ltitle">Gates: named exit criteria</span><span class="lconcept">check_gate</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l61" aria-label="Mark lesson 6.1 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">A <b>gate</b> is a named list of conditions — some computed from the graph (<code>all_findings_terminal</code>), some requiring submitted <b>evidence</b> (<code>tests_pass</code>). <code>check_gate</code> evaluates every condition and passes only when zero <em>required</em> checks fail. The real system seeds 22 gate definitions at every server start from an in-code canon; your mini keeps three, which is enough to gate an entire pipeline.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>DefaultGateDefinitions()</code> in <code>baseline.go:116-141</code>, seeded idempotently into the graph so projects can customize. The big three: <code>design_F_exit</code> (WPs registered, handoff exists, findings terminal, SDD completeness), <code>build_phase_G</code> (WPs complete, findings terminal, no internal deferrals, DoD complete, review docs have content, evidence-backed tests/static-analysis/deployment), <code>acceptance_exit</code> (scope-aware category matrix, fails closed on an unclassified scope). Evidence freshness is checked — a status regression or a source-file edit <em>after</em> submission invalidates it.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Define gates and conditions in code:</strong></p>
+          <div class="code" data-file><span class="fname">server/internal/graph/gates.go</span><pre><code>package graph
+
+import "fmt"
+
+type GateCondition struct {
+	Check            string `json:"check"`
+	Required         bool   `json:"required"`
+	EvidenceRequired bool   `json:"evidence_required"`
+}
+
+type GateResult struct {
+	Gate    string            `json:"gate"`
+	Passed  bool              `json:"passed"`
+	Results map[string]string `json:"results"` // check → "pass" | reason
+}
+
+// The mini canon. The real server seeds 22 of these into the graph.
+var GateDefinitions = map[string][]GateCondition{
+	"design_exit": {
+		{Check: "has_specification", Required: true},
+		{Check: "all_findings_terminal", Required: true},
+		{Check: "work_packages_registered", Required: true},
+	},
+	"build_exit": { // the mini build_phase_G
+		{Check: "all_wps_complete", Required: true},
+		{Check: "all_findings_terminal", Required: true},
+		{Check: "no_internal_deferrals", Required: true},
+		{Check: "dod_complete", Required: true},
+		{Check: "tests_pass", Required: true, EvidenceRequired: true},
+	},
+	"acceptance_exit": {
+		{Check: "all_findings_terminal", Required: true},
+		{Check: "dod_complete", Required: true},
+		{Check: "no_inadequate_verdicts", Required: true},
+		{Check: "deployment_verified", Required: true, EvidenceRequired: true},
+	},
+}
+
+// Simple checks: computed from the graph, no evidence involved.
+var simpleChecks = map[string]func(s *Store, respID string) (bool, string){
+	"has_specification": func(s *Store, id string) (bool, string) {
+		edges, _ := s.Neighbors(id, "out", EdgeDocumentedBy)
+		if len(edges) == 0 {
+			return false, "no DOCUMENTED_BY edge to a specification"
+		}
+		return true, ""
+	},
+	"work_packages_registered": func(s *Store, id string) (bool, string) {
+		edges, _ := s.Neighbors(id, "in", EdgeBelongsTo)
+		if len(edges) == 0 {
+			return false, "no work packages BELONGS_TO this responsibility"
+		}
+		return true, ""
+	},
+	"all_wps_complete": func(s *Store, id string) (bool, string) {
+		edges, _ := s.Neighbors(id, "in", EdgeBelongsTo)
+		for _, e := range edges {
+			wp, err := s.GetNode(e.Src)
+			if err != nil || wp.Status != "COMPLETE" {
+				return false, e.Src + " is not COMPLETE"
+			}
+		}
+		return true, ""
+	},
+	"all_findings_terminal": func(s *Store, id string) (bool, string) {
+		terminal := map[string]bool{"RESOLVED": true, "CONFIRMED": true,
+			"REJECTED": true, "DEFERRED": true}
+		edges, _ := s.Neighbors(id, "in", EdgeAffects)
+		for _, e := range edges {
+			f, err := s.GetNode(e.Src)
+			if err == nil &amp;&amp; f.Type == "Finding" &amp;&amp; !terminal[f.Status] {
+				return false, e.Src + " is " + f.Status
+			}
+		}
+		return true, ""
+	},
+	"no_internal_deferrals": func(s *Store, id string) (bool, string) {
+		edges, _ := s.Neighbors(id, "in", EdgeAffects)
+		for _, e := range edges {
+			f, err := s.GetNode(e.Src)
+			if err == nil &amp;&amp; f.Type == "Finding" &amp;&amp; f.Status == "DEFERRED" {
+				if ok, _ := s.CheckDeferral(f.ID); !ok {
+					return false, f.ID + " is DEFERRED with no ExternalDependency BLOCKS edge"
+				}
+			}
+		}
+		return true, ""
+	},
+	// dod_complete and no_inadequate_verdicts land in 6.2 / 6.3.
+}
+
+func (s *Store) CheckGate(respID, gate string) (GateResult, error) {
+	conds, ok := GateDefinitions[gate]
+	if !ok {
+		return GateResult{}, fmt.Errorf("unknown_gate: %q", gate)
+	}
+	res := GateResult{Gate: gate, Passed: true, Results: map[string]string{}}
+	for _, c := range conds {
+		var pass bool
+		var reason string
+		if c.EvidenceRequired {
+			pass, reason = s.latestEvidencePasses(respID, gate, c.Check)
+		} else if fn, ok := simpleChecks[c.Check]; ok {
+			pass, reason = fn(s, respID)
+		} else {
+			pass, reason = false, "no checker registered for "+c.Check
+		}
+		if pass {
+			res.Results[c.Check] = "pass"
+		} else {
+			res.Results[c.Check] = reason
+			if c.Required {
+				res.Passed = false
+			}
+		}
+	}
+	return res, nil
+}</code></pre></div>
+          <p>Two doctrines encoded here: a check with <b>no registered checker fails</b> (never "passed" because nothing ran — "passed" must be distinguishable from "did not run"), and non-required checks report without blocking.</p></li>
+        <li><p><strong>Stub <code>latestEvidencePasses</code></strong> to return <code>false, "no evidence submitted"</code> for now — 6.2 fills it in. Register the missing simple checks as failing placeholders too.</p></li>
+        <li><p><strong>Expose <code>check_gate(responsibility_id, gate)</code></strong> as a tool and run it against <code>booking-core</code>: <code>design_exit</code> should pass (spec + WPs exist from week 5, findings resolved from week 3); <code>build_exit</code> should fail listing exactly which checks and why. A failing gate that <em>names its reasons</em> is a to-do list, not a wall.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p><code>check_gate</code> returns per-check results; unknown gate → structured error; unknown check → fail-with-reason, never silent pass.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week6" id="l62">
+    <summary><span class="lnum">6.2</span><span class="ltitle">Evidence &amp; the Definition of Done</span><span class="lconcept">submit_gate_evidence</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l62" aria-label="Mark lesson 6.2 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">"Tests pass" is a claim; a <b>GateEvidence node</b> with the test output attached is a fact someone can audit. Evidence is only accepted for (gate, check) pairs the gate actually declares — you can't invent a check and satisfy it. The <b>Definition of Done</b> is the same idea at item level: a fixed checklist of booleans, flipped one at a time, with progress reported as <code>N/M</code>; partial delivery is never accepted.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>submit_gate_evidence</code> validates the pair against the GateDefinition, caps content at 10KB, and runs <em>per-check content validators</em> (the <code>patterns_reviewed</code> check requires structured JSON with resolvable pattern UUIDs; an empty list requires the literal sentinel "no applicable patterns" — silent skips are impossible). DoD: 11 items per domain responsibility, 12 with ops (WOW-007); <code>update_dod</code> flips one canonical key and returns "N/12". As defense-in-depth, when a runtime checker exists for the same check, <b>both</b> must pass — self-submitted evidence is never sole authority.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Implement evidence submission + lookup:</strong></p>
+          <div class="code" data-file><span class="fname">server/internal/graph/evidence.go</span><pre><code>package graph
+
+import (
+	"fmt"
+
+	"github.com/google/uuid"
+)
+
+func (s *Store) SubmitGateEvidence(respID, gate, check, content string, pass bool) (string, error) {
+	conds, ok := GateDefinitions[gate]
+	if !ok {
+		return "", fmt.Errorf("unknown_gate: %q", gate)
+	}
+	declared := false
+	for _, c := range conds {
+		if c.Check == check &amp;&amp; c.EvidenceRequired {
+			declared = true
+		}
+	}
+	if !declared {
+		return "", fmt.Errorf("check_not_evidence_bearing: %s does not declare "+
+			"%q as evidence-required — you cannot invent a check and satisfy it",
+			gate, check)
+	}
+	if len(content) &lt; 20 || len(content) &gt; 10&lt;&lt;10 {
+		return "", fmt.Errorf("evidence_content: 20 bytes to 10KB — paste the "+
+			"actual output, not an essay and not 'done'")
+	}
+	id := "evidence-" + uuid.NewString()
+	err := s.CreateNode(Node{ID: id, Type: "GateEvidence",
+		Props: map[string]any{
+			"responsibility_id": respID, "gate": gate, "check": check,
+			"content": content, "pass": pass,
+		}})
+	return id, err
+}
+
+// latestEvidencePasses: the most recent evidence row for the tuple
+// decides. No evidence = fail (never "no news is good news").
+func (s *Store) latestEvidencePasses(respID, gate, check string) (bool, string) {
+	rows, err := s.db.Query(`
+		SELECT props FROM nodes
+		WHERE project_id = ? AND type = 'GateEvidence'
+		  AND json_extract(props,'$.responsibility_id') = ?
+		  AND json_extract(props,'$.gate') = ?
+		  AND json_extract(props,'$.check') = ?
+		ORDER BY created_at DESC, id DESC LIMIT 1`,
+		s.projectID, respID, gate, check)
+	if err != nil {
+		return false, "evidence lookup failed: " + err.Error()
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return false, "no evidence submitted for " + check
+	}
+	var props string
+	rows.Scan(&amp;props)
+	n := Node{}
+	_ = jsonUnmarshal(props, &amp;n.Props) // tiny helper over encoding/json
+	if pass, _ := n.Props["pass"].(bool); pass {
+		return true, ""
+	}
+	return false, "latest evidence for " + check + " is failing"
+}</code></pre></div>
+          <p>(<code>go get github.com/google/uuid</code>; GateEvidence ids are the one place a UUID is fine — evidence is append-only plumbing, not a cited artifact.)</p></li>
+        <li><p><strong>Implement the DoD.</strong> Six canonical items for the mini (the real list has 11/12): <code>application_code, unit_tests, contract_tests, integration_tests, observability, runbook</code>. Store as a JSON object on the Responsibility; <code>UpdateDoD(respID, item, verified)</code> rejects unknown keys <em>and returns the full valid list in the error</em> — the tool teaches its own vocabulary. Then register the <code>dod_complete</code> simple check: every canonical key true.</p></li>
+        <li><p><strong>Expose <code>submit_gate_evidence</code> and <code>update_dod</code> as tools</strong>, then walk <code>booking-core</code> honestly toward <code>build_exit</code>: mark its WPs COMPLETE (through the status map!), flip DoD items as you actually satisfy them (you do have unit tests; you don't have a runbook — write a 10-line one at <code>docs/runbooks/booking-core.md</code> first), and submit real <code>go test ./...</code> output as <code>tests_pass</code> evidence.</p></li>
+        <li><p><strong>Try to cheat, and lose:</strong> submit evidence for a check the gate doesn't declare (<code>check_not_evidence_bearing</code>); submit 5-byte content ("ok") (<code>evidence_content</code>); flip a fake DoD key (<code>unknown key</code> + the valid list). Every cheat has a named refusal.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p><code>check_gate(booking-core, build_exit)</code> now passes, and you can trace every green check to either graph state or an evidence node with real content in it.</p></div>
+      <div class="callout war"><h4>Why it exists</h4><p>The sentinel-phrase trick ("no applicable patterns" required verbatim when the list is empty) exists because agents optimizing for gate-green will otherwise submit an empty list and move on — indistinguishable from having actually checked. Forcing an explicit claim converts a silent skip into an auditable lie, and auditable lies get caught.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week6" id="l63">
+    <summary><span class="lnum">6.3</span><span class="ltitle">Verdicts: the reviewer ensemble</span><span class="lconcept">record_verdict</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l63" aria-label="Mark lesson 6.3 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">DDE never trusts one reviewer, because each lens catches a different failure class: the <b>skeptic</b> hunts failure modes and error handling; <b>consistency</b> checks contract conformance and shared-code reuse; the <b>craftsman</b> judges readability and structure; the <b>strategic</b> reviewer asks "will we regret this in 3 sprints?". Each records a <b>Verdict</b> node, and gates require both presence (<code>verdict_exists:skeptic</code>) and quality (<code>no_inadequate_verdicts</code> — judged on each reviewer's <em>latest</em> verdict, so a re-review that comes back clean actually unblocks).</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>record_verdict.go</code>: Verdict node + <code>VERDICT_FOR</code> edge; canonical reviewer enum (skeptic, buildability, strategic, consistency, completeness, deployment, decision-authority…, with legacy aliases normalized on input); verdict <em>scales differ by reviewer</em> — strategic uses ALIGNED / MINOR_RISK / SIGNIFICANT_REGRET_RISK, everyone else ACCEPTABLE / NEEDS_WORK / INADEQUATE. <code>build_C_to_D</code> also requires <code>finding_count_plausible:3</code> — fewer than 3 findings on a &gt;500-LOC build fails the gate as <em>suspiciously superficial</em>.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Implement <code>RecordVerdict</code>:</strong> validate reviewer ∈ {skeptic, consistency, craftsman, strategic}; validate the scale per reviewer (strategic gets the alignment scale, others the adequacy scale); create the Verdict node (id: <code>verdict-&lt;uuid&gt;</code>, props: reviewer, verdict, notes, eli10) + a <code>VERDICT_FOR</code> edge. Reject a wrong-scale value with a message naming the right scale.</p></li>
+        <li><p><strong>Register the gate check:</strong> <code>no_inadequate_verdicts</code> — group this Responsibility's verdicts by reviewer, look at each reviewer's <em>latest</em> only, fail if any is INADEQUATE or SIGNIFICANT_REGRET_RISK. Add <code>verdict_exists:skeptic</code>-style parametric support if you're feeling strong (split on <code>:</code> in <code>CheckGate</code>); otherwise a plain <code>has_skeptic_verdict</code> check is fine for the mini.</p></li>
+        <li><p><strong>Run a real review ensemble on your own code — with Claude as the reviewers.</strong> Three prompts to Claude Code, one per lens, each ending with "record your verdict via record_verdict and register findings for anything NEEDS_WORK-level":</p>
+          <div class="code"><pre><code># skeptic
+"Review server/internal/graph/{gates,evidence}.go as the SKEPTIC: failure
+modes, unchecked errors, what happens when SQLite is locked, when JSON is
+malformed. record_verdict(reviewer=skeptic) + register_finding per issue."
+
+# consistency
+"Review the same files as CONSISTENCY: do they follow the store's existing
+patterns (sentinel errors, %w wrapping, structured codes)? Any reinvented
+helpers? record_verdict(reviewer=consistency)."
+
+# craftsman
+"Review as CRAFTSMAN: naming, duplication, function length, test coverage.
+record_verdict(reviewer=craftsman)."</code></pre></div></li>
+        <li><p><strong>Close the loop like a Team Lead:</strong> triage the findings the reviewers filed (fix / reject-with-DA-reason), re-run the ensemble on the fixed code, and watch <code>no_inadequate_verdicts</code> flip green on the <em>latest</em> verdicts while the historical NEEDS_WORK rows remain in the graph as history.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>≥3 Verdict nodes with <code>VERDICT_FOR</code> edges; a wrong-scale verdict is rejected; <code>no_inadequate_verdicts</code> reads latest-per-reviewer (prove it by recording NEEDS_WORK then ACCEPTABLE from the same reviewer).</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week6" id="l64">
+    <summary><span class="lnum">6.4</span><span class="ltitle">Hooks: enforcement that can't be forgotten</span><span class="lconcept">exit 2</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l64" aria-label="Mark lesson 6.4 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">The final plane: <b>mechanism</b>. Claude Code hooks are scripts that fire around tool calls — a PreToolUse hook can <b>block the call before it happens</b> (exit 2, stderr becomes the agent's remediation message); a PostToolUse hook observes results. The flagship pattern you'll clone: when <code>check_gate</code> passes, a PostToolUse hook drops a flag file; a PreToolUse hook on <code>update_status</code> refuses gate-protected transitions unless the flag exists. The agent can dispatch work however it likes — it cannot <em>claim</em> completion without the graph's proof.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p>The harness contract: one JSON object on stdin (<code>tool_name</code>, <code>tool_input</code>, and for PostToolUse <code>tool_response</code>); exit 0 allows, <b>exit 2 blocks with stderr fed to the model</b>. <code>enforce-gate-before-status.sh</code> is the two-mode flag-file handshake (<code>COMPLETE</code> requires <code>build_phase_G</code> or <code>acceptance_exit</code> by domain). Load-bearing quirk: PostToolUse fires only on <em>exact</em> tool-name matchers for MCP tools — the prefix matcher is inert (<code>Finding-posttooluse-mcp-dde-WQKV</code>). Git side: <code>ensure-git-hooks.sh</code> self-installs <code>core.hooksPath=.githooks</code> every session; pre-commit is a sectioned walk with a PASS/FAIL tally.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Write the two-mode gate hook</strong> (requires <code>jq</code>):</p>
+          <div class="code" data-file><span class="fname">.claude/hooks/enforce-gate-before-status.sh</span><pre><code>#!/usr/bin/env bash
+# Two modes, wired to two events in settings.json:
+#   PostToolUse on mcp__minidde__check_gate  → mint a flag on pass
+#   PreToolUse  on mcp__minidde__update_status → block gated statuses
+set -uo pipefail
+cd "$(git rev-parse --show-toplevel 2&gt;/dev/null || pwd)"
+FLAGDIR="${HOME}/.minidde/gate-flags"; mkdir -p "$FLAGDIR"
+INPUT=$(cat)
+TOOL=$(jq -r '.tool_name // ""' &lt;&lt;&lt;"$INPUT")
+
+if [[ "$TOOL" == "mcp__minidde__check_gate" ]]; then
+  # PostToolUse: on a passing result, mint the flag.
+  RESP=$(jq -r '.tool_input.responsibility_id // ""' &lt;&lt;&lt;"$INPUT")
+  GATE=$(jq -r '.tool_input.gate // ""' &lt;&lt;&lt;"$INPUT")
+  PASSED=$(jq -r '.tool_response.content[0].text // "{}"' &lt;&lt;&lt;"$INPUT" \
+           | jq -r '.passed // false' 2&gt;/dev/null)
+  if [[ "$PASSED" == "true" &amp;&amp; -n "$RESP" &amp;&amp; -n "$GATE" ]]; then
+    touch "$FLAGDIR/gate-${RESP}-${GATE}"
+  fi
+  exit 0
+fi
+
+if [[ "$TOOL" == "mcp__minidde__update_status" ]]; then
+  TO=$(jq -r '.tool_input.to // ""' &lt;&lt;&lt;"$INPUT")
+  ID=$(jq -r '.tool_input.id // ""' &lt;&lt;&lt;"$INPUT")
+  declare -A REQUIRED=(
+    [DESIGN_COMPLETE]="design_exit"
+    [BUILT]="build_exit"
+    [COMPLETE]="acceptance_exit"
+  )
+  GATE="${REQUIRED[$TO]:-}"
+  [[ -z "$GATE" ]] &amp;&amp; exit 0   # entry statuses pass freely
+  if [[ ! -f "$FLAGDIR/gate-${ID}-${GATE}" ]]; then
+    cat &gt;&amp;2 &lt;&lt;EOF
+BLOCKED: $ID → $TO requires a passing '$GATE' gate check first.
+Remedy: submit any missing evidence (submit_gate_evidence), then run
+check_gate(responsibility_id="$ID", gate="$GATE"). When it passes,
+retry this transition.
+EOF
+    exit 2
+  fi
+  rm -f "$FLAGDIR/gate-${ID}-${GATE}"   # flags are single-use
+  exit 0
+fi
+exit 0</code></pre></div></li>
+        <li><p><strong>Wire it — with exact tool-name matchers</strong> (the prefix-matcher quirk is real; wire exact names like the real repo does):</p>
+          <div class="code" data-file><span class="fname">.claude/settings.json</span><pre><code>{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__minidde__update_status",
+        "hooks": [{ "type": "command",
+          "command": ".claude/hooks/enforce-gate-before-status.sh" }]
+      },
+      {
+        "matcher": "mcp__minidde__",
+        "hooks": [{ "type": "command",
+          "command": ".claude/hooks/require-project-config.sh" }]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__minidde__check_gate",
+        "hooks": [{ "type": "command",
+          "command": ".claude/hooks/enforce-gate-before-status.sh" }]
+      }
+    ]
+  }
+}</code></pre></div>
+          <p>And the ten-line precondition hook it references — your clone of <code>auto-inject-project-id.sh</code>:</p>
+          <div class="code" data-file><span class="fname">.claude/hooks/require-project-config.sh</span><pre><code>#!/usr/bin/env bash
+cd "$(git rev-parse --show-toplevel 2&gt;/dev/null || pwd)"
+if [[ ! -f .minidde/project.yaml ]]; then
+  echo "BLOCKED: .minidde/project.yaml missing — every graph call needs a
+project identity. Create it with: project_id + db_path." &gt;&amp;2
+  exit 2
+fi
+exit 0</code></pre></div></li>
+        <li><p><strong>Build the git tier.</strong> A sectioned pre-commit + a self-installer:</p>
+          <div class="code" data-file><span class="fname">.githooks/pre-commit</span><pre><code>#!/usr/bin/env bash
+# Sectioned gate: each section prints PASS/FAIL; any FAIL blocks.
+set -uo pipefail
+fails=0
+section() { echo "── $1"; }
+result() { if [[ $2 -eq 0 ]]; then echo "   PASS"; else echo "   FAIL"; fails=$((fails+1)); fi; }
+
+section "1. branch policy — no direct commits to main"
+branch=$(git symbolic-ref --short HEAD 2&gt;/dev/null || echo detached)
+[[ "$branch" != "main" ]]; result "branch" $?
+
+section "2. governance lint (decision records)"
+./scripts/lint-decisions.sh &gt;/dev/null; result "lint-decisions" $?
+
+section "3. go build + vet (server module)"
+(cd server &amp;&amp; go build ./... &amp;&amp; go vet ./...) &gt;/dev/null; result "go" $?
+
+echo; echo "pre-commit: $fails failure(s)"
+exit $((fails &gt; 0))</code></pre></div>
+          <p>Installer (run every Claude session via a SessionStart hook, per the real <code>ensure-git-hooks.sh</code>): <code>git config core.hooksPath .githooks</code> — idempotent, and wrapped so it can never block a session. Add it to <code>settings.json</code> under <code>SessionStart</code>.</p></li>
+        <li><p><strong>Prove the trap works.</strong> In a fresh Claude Code session: ask the agent to move <code>booking-core</code> to COMPLETE. It should be blocked (no <code>acceptance_exit</code> flag), read the remediation from stderr, submit <code>deployment_verified</code> evidence, record any missing verdicts, run <code>check_gate</code>, and only then succeed. Watch the transcript: <em>the hook taught the agent the process</em>.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint — end of week 6</h4><p>The COMPLETE-without-gate attempt is blocked with your remediation text; after honest evidence + verdicts it succeeds; committing on <code>main</code> is refused; a broken decision record blocks the commit; deleting <code>.minidde/project.yaml</code> blocks every graph tool call.</p></div>
+      <div class="callout war"><h4>Why it exists</h4><p>2026-08-17: two PRs reached auto-merge arm with <b>19 unanswered review findings</b> between them. The prose rule requiring responses existed, was correct, and was ignored — so it became a hook (<code>enforce-qual-response-before-arm.sh</code>) that blocks the arm unless a fresh machine-minted pass record exists. The doctrine, stated in WOW-agent-engineering-principles-NF8V: an advisory rule violated twice migrates to mechanical enforcement. "Restating the prose is not a fix."</p></div>
+    </div>
+  </details>
+</section>

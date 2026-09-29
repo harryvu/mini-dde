@@ -1,0 +1,156 @@
+<footer style="margin-top:60px;padding-top:18px;border-top:1px solid var(--line);font-size:12px;color:var(--faint)">
+  <p>Build Your Own Nexus — an 8-week course on mastering Nexus DDE by rebuilding it small, grounded in the <code>C2C_Ono_AIR310054</code> repo. Progress is saved in this browser only.</p>
+</footer>
+</main>
+</div>
+
+<noscript><style>.view{display:block !important}</style></noscript>
+<script>
+(function(){
+  "use strict";
+  var VIEWS = ["overview","week1","week2","week3","week4","week5","week6","week7","week8","reference"];
+  var LS_KEY = "byon-progress-v1";
+
+  /* ---------- storage (always guarded) ---------- */
+  function loadProgress(){
+    try { return JSON.parse(localStorage.getItem(LS_KEY) || "{}") || {}; }
+    catch(e){ return {}; }
+  }
+  function saveProgress(p){
+    try { localStorage.setItem(LS_KEY, JSON.stringify(p)); } catch(e){}
+  }
+
+  /* ---------- progress rendering ---------- */
+  function renderProgress(){
+    var p = loadProgress();
+    var boxes = document.querySelectorAll("input[data-lesson]");
+    var total = boxes.length, done = 0;
+    boxes.forEach(function(b){
+      var isDone = !!p[b.getAttribute("data-lesson")];
+      b.checked = isDone;
+      if (isDone) done++;
+    });
+    var label = document.getElementById("progLabel");
+    var fill = document.getElementById("progFill");
+    if (label) label.textContent = done + " / " + total + " lessons";
+    if (fill) fill.style.width = (total ? Math.round(100*done/total) : 0) + "%";
+    // per-week counts
+    document.querySelectorAll("[data-wkcount]").forEach(function(el){
+      var wk = el.getAttribute("data-wkcount");
+      var wkBoxes = document.querySelectorAll('details[data-week="'+wk+'"] input[data-lesson]');
+      var wkDone = 0;
+      wkBoxes.forEach(function(b){ if (p[b.getAttribute("data-lesson")]) wkDone++; });
+      el.textContent = wkDone + "/" + wkBoxes.length;
+      el.classList.toggle("done", wkBoxes.length > 0 && wkDone === wkBoxes.length);
+    });
+  }
+
+  document.querySelectorAll(".ldone").forEach(function(lbl){
+    lbl.addEventListener("click", function(e){ e.stopPropagation(); });
+  });
+  document.querySelectorAll("input[data-lesson]").forEach(function(box){
+    box.addEventListener("click", function(e){ e.stopPropagation(); });
+    box.addEventListener("change", function(){
+      var p = loadProgress();
+      var id = box.getAttribute("data-lesson");
+      if (box.checked) p[id] = true; else delete p[id];
+      saveProgress(p);
+      renderProgress();
+    });
+  });
+
+  /* ---------- view router ---------- */
+  function showView(id){
+    if (VIEWS.indexOf(id) === -1) id = "overview";
+    VIEWS.forEach(function(v){
+      var el = document.getElementById(v);
+      if (el) el.classList.toggle("active", v === id);
+    });
+    document.querySelectorAll(".rail a.navlink").forEach(function(a){
+      a.classList.toggle("active", a.getAttribute("data-view") === id);
+    });
+    var rail = document.getElementById("rail");
+    if (rail) rail.classList.remove("open");
+    return id;
+  }
+
+  function route(){
+    var hash = (location.hash || "#overview").slice(1);
+    // deep link to a lesson: #l42 → week4, open the lesson
+    var m = /^l(\d)(\d)$/.exec(hash);
+    if (m){
+      var lesson = document.getElementById(hash);
+      if (lesson){
+        showView(lesson.getAttribute("data-week") || ("week" + m[1]));
+        lesson.open = true;
+        setTimeout(function(){ lesson.scrollIntoView({block:"start"}); }, 30);
+        return;
+      }
+    }
+    showView(hash);
+    window.scrollTo(0, 0);
+  }
+  window.addEventListener("hashchange", route);
+
+  /* ---------- expand / collapse per week ---------- */
+  document.querySelectorAll("[data-expand]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      document.querySelectorAll('details[data-week="'+btn.getAttribute("data-expand")+'"]')
+        .forEach(function(d){ d.open = true; });
+    });
+  });
+  document.querySelectorAll("[data-collapse]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      document.querySelectorAll('details[data-week="'+btn.getAttribute("data-collapse")+'"]')
+        .forEach(function(d){ d.open = false; });
+    });
+  });
+
+  /* ---------- copy buttons on code blocks ---------- */
+  document.querySelectorAll(".code").forEach(function(block){
+    var pre = block.querySelector("pre");
+    if (!pre) return;
+    var btn = document.createElement("button");
+    btn.className = "copybtn";
+    btn.type = "button";
+    btn.textContent = "copy";
+    btn.addEventListener("click", function(){
+      var text = pre.textContent || "";
+      function ok(){
+        btn.textContent = "copied";
+        btn.classList.add("copied");
+        setTimeout(function(){ btn.textContent = "copy"; btn.classList.remove("copied"); }, 1400);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(ok, function(){ fallback(); });
+      } else { fallback(); }
+      function fallback(){
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); ok(); } catch(e){}
+        document.body.removeChild(ta);
+      }
+    });
+    block.appendChild(btn);
+  });
+
+  /* ---------- mobile nav ---------- */
+  var menuBtn = document.getElementById("menuBtn");
+  if (menuBtn){
+    menuBtn.addEventListener("click", function(){
+      var rail = document.getElementById("rail");
+      if (rail) rail.classList.toggle("open");
+    });
+  }
+
+  /* ---------- file-name chips on labeled code blocks ---------- */
+  document.querySelectorAll(".code[data-file]").forEach(function(b){
+    b.setAttribute("data-file", "");
+  });
+
+  renderProgress();
+  route();
+})();
+</script>

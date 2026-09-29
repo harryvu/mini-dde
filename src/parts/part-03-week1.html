@@ -1,0 +1,517 @@
+<!-- ============================================================ WEEK 1 -->
+<section class="view" id="week1">
+  <header class="weekhead">
+    <p class="eyebrow">Week 1 · Part I — the graph kernel</p>
+    <h2>The graph is the truth</h2>
+    <p class="wintro">DDE's founding bet: the durable record of a software project — its decisions, responsibilities, contracts, findings — lives in a <b>queryable graph</b>, not in tickets, wikis, or people's heads. This week you internalize why, then build the smallest honest version: a project-scoped node/edge store in Go over SQLite, with a CLI.</p>
+    <ul class="wgoals">
+      <li><b>Concept:</b> the four planes — intent, context, mechanism, state</li>
+      <li><b>Build:</b> <code>internal/graph</code> — nodes, edges, queries</li>
+      <li><b>Build:</b> a <code>minidde</code> CLI with JSON output</li>
+      <li><b>Habit:</b> idempotent writes, project scoping by construction</li>
+    </ul>
+    <div class="wtools"><button data-expand="week1">Expand all lessons</button><button data-collapse="week1">Collapse all</button></div>
+  </header>
+
+  <details class="lesson" data-week="week1" id="l11" open>
+    <summary><span class="lnum">1.1</span><span class="ltitle">The four planes of DDE — orientation &amp; setup</span><span class="lconcept">worldview</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l11" aria-label="Mark lesson 1.1 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">Nexus DDE ("Decision-Driven Engineering") is not one tool — it's four planes that stay deliberately separate. <b>Intent</b> lives in decision records (xDRs) on disk. <b>Context</b> lives in always-loaded rules that put constraints in every agent session. <b>Mechanism</b> lives in hooks, lints, and gates that block bad writes. <b>State</b> lives in the knowledge graph, which every agent queries before touching files. Confusing the planes is the root failure DDE prevents: a rule without a decision record is authority from nowhere; a decision without enforcement is a wish; state kept in prose is state nobody can query.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>docs/governance-framework.md</code> §1 draws the four-plane diagram; CLAUDE.md § "Knowledge graph (single source of truth)" mandates graph-before-files; the hosted graph is reached via the <code>dde</code> MCP server (110 tools, Neo4j behind it). The one-way hierarchy — <b>xDR → <code>.claude/rules/</code> → enforcement</b> — is formalized in <code>ADR-ono-xdrs-source-ESHJ</code>: implementation layers cite the decision they implement and never author authority themselves.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Read the real thing first (60–90 min).</strong> In the C2C Ono repo, read <code>docs/governance-framework.md</code> top to bottom, then skim CLAUDE.md. Write down, in your own words, one sentence per plane: where does intent live? context? mechanism? state? You'll test these sentences against your own build all course long.</p></li>
+        <li><p><strong>Create the workspace.</strong></p>
+          <div class="code"><pre><code>mkdir mini-dde &amp;&amp; cd mini-dde &amp;&amp; git init
+mkdir -p server docs/{adr,pdr,ddr,wow,cir} .minidde
+cd server &amp;&amp; go mod init minidde/server &amp;&amp; cd ..
+cat &gt; go.work &lt;&lt;'EOF'
+go 1.22
+
+use ./server
+EOF</code></pre></div>
+          <p>The real repo is multi-module Go with no root <code>go.mod</code> (CLAUDE.md § Build &amp; test) — <code>go.work</code> gives you the same shape from day one; the capstone adds more modules under <code>use</code> later.</p></li>
+        <li><p><strong>Pin your project identity.</strong> The real server reads <code>.nexus-dde/project.yaml</code> and bakes <code>project_id</code> into every query — sister tenants share one database, partitioned by that property. Yours does the same:</p>
+          <div class="code" data-file><span class="fname">.minidde/project.yaml</span><pre><code>project_id: "mini-c2c"</code></pre></div></li>
+        <li><p><strong>Sketch the target layout</strong> so every later lesson has a home. Create the directories now (empty is fine):</p>
+          <div class="code"><pre><code>mini-dde/
+├── go.work
+├── .minidde/project.yaml      # project identity (week 1)
+├── server/                    # the mini-DDE server
+│   ├── cmd/minidde/           # CLI + MCP + HTTP entrypoint
+│   └── internal/
+│       ├── graph/             # store, model, transitions, allocator, waves
+│       ├── tools/             # MCP tool handlers (week 4)
+│       └── httpapi/           # process-server REST for the PCC (week 7)
+├── docs/{adr,pdr,ddr,wow,cir}/  # decision records (week 3)
+├── .claude/{rules,hooks,skills}/  # agent context + enforcement (weeks 4–7)
+├── .githooks/                 # pre-commit gate (week 6)
+├── pcc/                       # Next.js mini-PCC (week 7)
+└── capstone/                  # mini-C2C (week 8)</code></pre></div></li>
+        <li><p><strong>Commit.</strong> <code>git add -A &amp;&amp; git commit -m "week 1: workspace skeleton"</code>. One commit per lesson from here on — your history becomes the course log.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p><code>go work sync</code> exits clean; you can say the four planes from memory; you can point at where each will live in your tree.</p></div>
+      <div class="callout war"><h4>Why it exists</h4><p>Before Ono relocated authority into its own xDRs, vocabulary came from an upstream repo whose own files disagreed on the spine identifier, and questions raised upstream had no SLA — one open term cost ~2h of agent time in a single day. The conclusion recorded in <code>ADR-ono-xdrs-source-ESHJ</code>: "the authority chain has been ceremonial." Plane separation with a one-way hierarchy is the fix, and your mini-DDE will enforce it too.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week1" id="l12">
+    <summary><span class="lnum">1.2</span><span class="ltitle">A node store in ~150 lines</span><span class="lconcept">create_node</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l12" aria-label="Mark lesson 1.2 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">A graph node in DDE is deliberately generic: an <b>id</b>, a <b>type</b> (Responsibility, Finding, Decision…), a <b>status</b>, and a bag of <b>properties</b>. The store bakes the <code>project_id</code> in at construction so no caller can forget it, and writes are <b>idempotent merges</b>: creating a node that exists updates its properties instead of erroring — the same <code>MERGE … ON CREATE SET n = $props ON MATCH SET n += $props</code> semantics the real server runs in Cypher, which is what lets agents safely retry.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p>The schema is one 2,347-line file: <code>builder/server/internal/graph/model.go</code> — "63 node types, 63 edge types, status enums, valid status transitions". The store is <code>internal/graph/store.go</code>: a <code>neo4j.Driver</code> + <code>projectID</code>, every query injecting <code>$pid</code>; <code>CreateNode</code> at <code>store.go:175-210</code> is the idempotent MERGE. There's no ORM — hand-written Cypher constants, one method per use case.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Add the SQLite driver</strong> (pure Go, no CGO — friendlier for juniors than the C driver):</p>
+          <div class="code"><pre><code>cd server &amp;&amp; go get modernc.org/sqlite</code></pre></div></li>
+        <li><p><strong>Define the model.</strong> Start your own miniature <code>model.go</code>:</p>
+          <div class="code" data-file><span class="fname">server/internal/graph/model.go</span><pre><code>package graph
+
+import "time"
+
+// Node is the one generic shape every graph entity shares.
+// Type distinguishes Responsibility from Finding from Decision;
+// Props carries everything type-specific.
+type Node struct {
+	ID        string         `json:"id"`
+	Type      string         `json:"type"`
+	Status    string         `json:"status"`
+	Props     map[string]any `json:"props"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+}
+
+type Edge struct {
+	Src  string `json:"src"`
+	Dst  string `json:"dst"`
+	Type string `json:"type"`
+}
+
+// The node types the mini-DDE admits. The real model.go defines 63;
+// we start with the load-bearing core and grow it week by week.
+var ValidNodeTypes = map[string]bool{
+	"Project": true, "Responsibility": true, "WorkPackage": true,
+	"Document": true, "Decision": true, "Finding": true,
+	"Escalation": true, "Pattern": true, "Verdict": true,
+	"Event": true, "Contract": true, "AgentSession": true,
+	"GateEvidence": true, "ExternalDependency": true,
+}</code></pre></div></li>
+        <li><p><strong>Write the store.</strong> Constructor opens the DB, applies the schema, and bakes in the project id:</p>
+          <div class="code" data-file><span class="fname">server/internal/graph/store.go</span><pre><code>package graph
+
+import (
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+
+	_ "modernc.org/sqlite"
+)
+
+var ErrNotFound = errors.New("node not found")
+var ErrBadType = errors.New("unknown node type")
+
+const schema = `
+CREATE TABLE IF NOT EXISTS nodes (
+  id         TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  type       TEXT NOT NULL,
+  status     TEXT NOT NULL DEFAULT '',
+  props      TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (id, project_id)
+);
+CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(project_id, type);
+CREATE TABLE IF NOT EXISTS edges (
+  project_id TEXT NOT NULL,
+  src TEXT NOT NULL, dst TEXT NOT NULL, type TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, src, dst, type)
+);`
+
+// Store carries the connection AND the project identity — callers can
+// never forget project scoping because they never supply it.
+type Store struct {
+	db        *sql.DB
+	projectID string
+}
+
+func Open(path, projectID string) (*Store, error) {
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", path, err)
+	}
+	if _, err := db.Exec(schema); err != nil {
+		return nil, fmt.Errorf("apply schema: %w", err)
+	}
+	return &amp;Store{db: db, projectID: projectID}, nil
+}
+
+func (s *Store) Close() error { return s.db.Close() }
+
+// CreateNode is an idempotent merge: insert on first sight, patch
+// props on repeat — the retry-safe write agents depend on.
+func (s *Store) CreateNode(n Node) error {
+	if !ValidNodeTypes[n.Type] {
+		return fmt.Errorf("%w: %q", ErrBadType, n.Type)
+	}
+	props, err := json.Marshal(n.Props)
+	if err != nil {
+		return fmt.Errorf("marshal props: %w", err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err = s.db.Exec(`
+		INSERT INTO nodes (id, project_id, type, status, props, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id, project_id) DO UPDATE SET
+		  props = json_patch(nodes.props, excluded.props),
+		  updated_at = excluded.updated_at`,
+		n.ID, s.projectID, n.Type, n.Status, string(props), now, now)
+	if err != nil {
+		return fmt.Errorf("create node %s: %w", n.ID, err)
+	}
+	return nil
+}
+
+func (s *Store) GetNode(id string) (Node, error) {
+	var n Node
+	var props, created, updated string
+	err := s.db.QueryRow(`
+		SELECT id, type, status, props, created_at, updated_at
+		FROM nodes WHERE id = ? AND project_id = ?`,
+		id, s.projectID).Scan(&amp;n.ID, &amp;n.Type, &amp;n.Status, &amp;props, &amp;created, &amp;updated)
+	if errors.Is(err, sql.ErrNoRows) {
+		return n, fmt.Errorf("%w: %s", ErrNotFound, id)
+	}
+	if err != nil {
+		return n, fmt.Errorf("get node %s: %w", id, err)
+	}
+	_ = json.Unmarshal([]byte(props), &amp;n.Props)
+	n.CreatedAt, _ = time.Parse(time.RFC3339, created)
+	n.UpdatedAt, _ = time.Parse(time.RFC3339, updated)
+	return n, nil
+}</code></pre></div>
+          <p>Two patterns to notice, both lifted from the real store: <b>sentinel errors wrapped with <code>%w</code></b> so callers use <code>errors.Is</code>, and <b>the merge-on-conflict write</b> (SQLite's <code>json_patch</code> plays the role of Cypher's <code>n += $props</code>).</p></li>
+        <li><p><strong>Prove it with a test</strong> — table-driven, no mock library, the house style:</p>
+          <div class="code" data-file><span class="fname">server/internal/graph/store_test.go</span><pre><code>package graph
+
+import (
+	"errors"
+	"path/filepath"
+	"testing"
+)
+
+func testStore(t *testing.T) *Store {
+	t.Helper()
+	s, err := Open(filepath.Join(t.TempDir(), "test.db"), "mini-c2c")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	return s
+}
+
+func TestCreateNodeIsIdempotentMerge(t *testing.T) {
+	s := testStore(t)
+	n := Node{ID: "booking-core", Type: "Responsibility",
+		Props: map[string]any{"name": "Booking core", "domain": "booking"}}
+	if err := s.CreateNode(n); err != nil {
+		t.Fatalf("first create: %v", err)
+	}
+	// Second create with new props must merge, not error.
+	n.Props = map[string]any{"priority": "high"}
+	if err := s.CreateNode(n); err != nil {
+		t.Fatalf("second create: %v", err)
+	}
+	got, err := s.GetNode("booking-core")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Props["name"] != "Booking core" || got.Props["priority"] != "high" {
+		t.Fatalf("merge lost data: %+v", got.Props)
+	}
+}
+
+func TestUnknownTypeRejected(t *testing.T) {
+	s := testStore(t)
+	err := s.CreateNode(Node{ID: "x", Type: "Widget"})
+	if !errors.Is(err, ErrBadType) {
+		t.Fatalf("want ErrBadType, got %v", err)
+	}
+}</code></pre></div></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p><code>cd server &amp;&amp; go test ./internal/graph/</code> — both tests green. Open the DB with <code>sqlite3</code> and confirm a node row exists with your <code>project_id</code> stamped on it.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week1" id="l13">
+    <summary><span class="lnum">1.3</span><span class="ltitle">Edges make it a graph</span><span class="lconcept">create_edge</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l13" aria-label="Mark lesson 1.3 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">Relationships in DDE are <b>typed edges</b>, never foreign-key properties. A WorkPackage points at its Responsibility with <code>BELONGS_TO</code>; a Finding points at what it affects with <code>AFFECTS</code>. This matters because everything downstream — the wave planner, the UI, context assembly — resolves relationships by walking edges. The real repo's rule is blunt: "properties like <code>responsibility_id</code> are NOT enough… if a dependency isn't an edge, it doesn't exist to the planner."</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>.claude/rules/bld-graph-edge-contracts.md</code> lists required edges per node type; the edge constants live at <code>model.go:1008-1158</code> (~55 types). The PCC's GraphQL layer resolves every relationship via <code>@relationship</code> directives over these edges — a node created without its edges renders as an empty tab even though the data exists.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Declare the edge vocabulary.</strong> Append to <code>model.go</code>:</p>
+          <div class="code" data-file><span class="fname">server/internal/graph/model.go (append)</span><pre><code>// Edge types, SOURCE → TARGET. A subset of the real 63.
+const (
+	EdgeBelongsTo    = "BELONGS_TO"     // WorkPackage → Responsibility
+	EdgeDocumentedBy = "DOCUMENTED_BY"  // Responsibility → Document
+	EdgeGovernedBy   = "GOVERNED_BY"    // Responsibility → Decision
+	EdgeAffects      = "AFFECTS"        // Finding → Responsibility
+	EdgeFoundIn      = "FOUND_IN"       // Finding → Responsibility
+	EdgeProduces     = "PRODUCES"       // Responsibility → Event
+	EdgeConsumes     = "CONSUMES"       // Responsibility → Event
+	EdgeDependsOn    = "DEPENDS_ON"     // WorkPackage → WorkPackage
+	EdgeWorksOn      = "WORKS_ON"       // AgentSession → Responsibility
+	EdgeVerdictFor   = "VERDICT_FOR"    // Verdict → Responsibility
+	EdgePromotesTo   = "PROMOTES_TO"    // CIR Decision → promoted Decision
+	EdgeSupersedes   = "SUPERSEDES"     // Decision → Decision
+	EdgeBlocks       = "BLOCKS"         // ExternalDependency → Finding
+	EdgeImplements   = "IMPLEMENTS"     // WorkPackage → Contract|Event
+)
+
+var ValidEdgeTypes = map[string]bool{
+	EdgeBelongsTo: true, EdgeDocumentedBy: true, EdgeGovernedBy: true,
+	EdgeAffects: true, EdgeFoundIn: true, EdgeProduces: true,
+	EdgeConsumes: true, EdgeDependsOn: true, EdgeWorksOn: true,
+	EdgeVerdictFor: true, EdgePromotesTo: true, EdgeSupersedes: true,
+	EdgeBlocks: true, EdgeImplements: true,
+}</code></pre></div></li>
+        <li><p><strong>Add edge writes and graph reads</strong> to the store:</p>
+          <div class="code" data-file><span class="fname">server/internal/graph/edges.go</span><pre><code>package graph
+
+import (
+	"fmt"
+	"time"
+)
+
+// CreateEdge requires both endpoints to exist — an edge to a ghost
+// node is how graphs silently rot.
+func (s *Store) CreateEdge(src, dst, edgeType string) error {
+	if !ValidEdgeTypes[edgeType] {
+		return fmt.Errorf("unknown edge type %q", edgeType)
+	}
+	for _, id := range []string{src, dst} {
+		if _, err := s.GetNode(id); err != nil {
+			return fmt.Errorf("edge endpoint: %w", err)
+		}
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := s.db.Exec(`
+		INSERT INTO edges (project_id, src, dst, type, created_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT DO NOTHING`,
+		s.projectID, src, dst, edgeType, now)
+	if err != nil {
+		return fmt.Errorf("create edge %s-[%s]-&gt;%s: %w", src, edgeType, dst, err)
+	}
+	return nil
+}
+
+// QueryAll lists nodes of a type, optionally filtered by status.
+func (s *Store) QueryAll(nodeType, status string) ([]Node, error) {
+	q := `SELECT id FROM nodes WHERE project_id = ? AND type = ?`
+	args := []any{s.projectID, nodeType}
+	if status != "" {
+		q += ` AND status = ?`
+		args = append(args, status)
+	}
+	q += ` ORDER BY id`
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query %s: %w", nodeType, err)
+	}
+	defer rows.Close()
+	var out []Node
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&amp;id); err != nil {
+			return nil, err
+		}
+		n, err := s.GetNode(id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
+// Neighbors walks one hop. dir is "out" (src=id) or "in" (dst=id);
+// edgeType "" means any.
+func (s *Store) Neighbors(id, dir, edgeType string) ([]Edge, error) {
+	col := "src"
+	if dir == "in" {
+		col = "dst"
+	}
+	q := fmt.Sprintf(`SELECT src, dst, type FROM edges
+		WHERE project_id = ? AND %s = ?`, col)
+	args := []any{s.projectID, id}
+	if edgeType != "" {
+		q += ` AND type = ?`
+		args = append(args, edgeType)
+	}
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("neighbors of %s: %w", id, err)
+	}
+	defer rows.Close()
+	var out []Edge
+	for rows.Next() {
+		var e Edge
+		if err := rows.Scan(&amp;e.Src, &amp;e.Dst, &amp;e.Type); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}</code></pre></div></li>
+        <li><p><strong>Test the walk.</strong> Create a Responsibility, a WorkPackage, a <code>BELONGS_TO</code> edge; assert <code>Neighbors(resp, "in", "BELONGS_TO")</code> finds the WP; assert an edge to a missing node returns <code>ErrNotFound</code>. Write this test yourself — it's the week-1 exam.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>Your test proves: valid edge created; duplicate edge is a no-op; edge to a ghost node fails loudly; one-hop walk works in both directions.</p></div>
+      <div class="callout war"><h4>Why it exists</h4><p>The real rule documents the failure: nodes created with a <code>responsibility_id</code> property but no <code>BELONGS_TO</code> edge were invisible to the parent's UI tabs and to the wave planner — the data existed and the system couldn't see it. "The graph saying 35 things can run in parallel when they need infrastructure first" is the graph lying; edges are how it tells the truth.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week1" id="l14">
+    <summary><span class="lnum">1.4</span><span class="ltitle">A CLI to talk to it</span><span class="lconcept">operator surface</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l14" aria-label="Mark lesson 1.4 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">Before agents get an MCP surface (week 4), <em>you</em> need a surface. A small CLI over the store does double duty: it's your debugging tool for the whole course, and it forces the store's API to be usable by something other than tests. Output is JSON — the graph's lingua franca.</p>
+      <div class="callout real"><h4>In the real system</h4><p>The real server's entrypoint (<code>builder/server/main.go</code>) serves stdio MCP and HTTP; operators also drive it through the PCC and a CLI package (<code>internal/cli</code>). The habit you're building — "ask the graph, get JSON" — is the graph-first discipline of <code>.claude/rules/bld-knowledge-graph-first.md</code>.</p></div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Write the entrypoint</strong> with stdlib <code>flag</code> subcommands (no framework):</p>
+          <div class="code" data-file><span class="fname">server/cmd/minidde/main.go</span><pre><code>package main
+
+import (
+	"encoding/json"
+	"flag"
+	"fmt"
+	"os"
+
+	"minidde/server/internal/graph"
+)
+
+func main() {
+	if err := run(os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
+}
+
+func openStore() (*graph.Store, error) {
+	// Course simplification: project id from env with the same
+	// default the .minidde/project.yaml pins.
+	pid := os.Getenv("MINIDDE_PROJECT")
+	if pid == "" {
+		pid = "mini-c2c"
+	}
+	db := os.Getenv("MINIDDE_DB")
+	if db == "" {
+		db = "minidde.db"
+	}
+	return graph.Open(db, pid)
+}
+
+func emit(v any) error {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(v)
+}
+
+func run(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: minidde &lt;create-node|get|ls|link|neighbors&gt; ...")
+	}
+	s, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+
+	switch args[0] {
+	case "create-node":
+		fs := flag.NewFlagSet("create-node", flag.ExitOnError)
+		id := fs.String("id", "", "node id")
+		typ := fs.String("type", "", "node type")
+		props := fs.String("props", "{}", "JSON properties")
+		fs.Parse(args[1:])
+		var p map[string]any
+		if err := json.Unmarshal([]byte(*props), &amp;p); err != nil {
+			return fmt.Errorf("bad --props: %w", err)
+		}
+		if err := s.CreateNode(graph.Node{ID: *id, Type: *typ, Props: p}); err != nil {
+			return err
+		}
+		n, _ := s.GetNode(*id)
+		return emit(n)
+	case "get":
+		n, err := s.GetNode(args[1])
+		if err != nil {
+			return err
+		}
+		return emit(n)
+	case "ls":
+		fs := flag.NewFlagSet("ls", flag.ExitOnError)
+		typ := fs.String("type", "Responsibility", "node type")
+		status := fs.String("status", "", "status filter")
+		fs.Parse(args[1:])
+		nodes, err := s.QueryAll(*typ, *status)
+		if err != nil {
+			return err
+		}
+		return emit(nodes)
+	case "link":
+		fs := flag.NewFlagSet("link", flag.ExitOnError)
+		src := fs.String("src", "", "source node id")
+		dst := fs.String("dst", "", "target node id")
+		typ := fs.String("type", "", "edge type")
+		fs.Parse(args[1:])
+		if err := s.CreateEdge(*src, *dst, *typ); err != nil {
+			return err
+		}
+		return emit(map[string]string{"created": *src + " -[" + *typ + "]-&gt; " + *dst})
+	case "neighbors":
+		fs := flag.NewFlagSet("neighbors", flag.ExitOnError)
+		id := fs.String("id", "", "node id")
+		dir := fs.String("dir", "out", "out|in")
+		typ := fs.String("type", "", "edge type filter")
+		fs.Parse(args[1:])
+		edges, err := s.Neighbors(*id, *dir, *typ)
+		if err != nil {
+			return err
+		}
+		return emit(edges)
+	default:
+		return fmt.Errorf("unknown command %q", args[0])
+	}
+}</code></pre></div></li>
+        <li><p><strong>Seed a starter graph</strong> — the skeleton the rest of the course grows on:</p>
+          <div class="code" data-file><span class="fname">scripts/seed.sh</span><pre><code>#!/usr/bin/env bash
+set -euo pipefail
+M="go run ./server/cmd/minidde"
+$M create-node --id mini-c2c --type Project --props '{"name":"Mini C2C"}'
+$M create-node --id booking-core --type Responsibility \
+  --props '{"name":"Booking core","domain":"booking"}'
+$M create-node --id booking-core-wp-001 --type WorkPackage \
+  --props '{"name":"Booking API","sequence":1}'
+$M link --src booking-core-wp-001 --dst booking-core --type BELONGS_TO
+$M ls --type Responsibility</code></pre></div></li>
+        <li><p><strong>Run it</strong>: <code>chmod +x scripts/seed.sh &amp;&amp; ./scripts/seed.sh</code>. Then explore: <code>go run ./server/cmd/minidde neighbors --id booking-core --dir in</code>.</p></li>
+        <li><p><strong>Commit</strong>, and add <code>minidde.db</code> to <code>.gitignore</code> — state lives in the graph, but the graph's <em>file</em> is derived and rebuildable from your seed.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint — end of week 1</h4><p>The seed runs twice in a row with no errors (idempotency proves itself). <code>neighbors --id booking-core --dir in</code> returns the WP edge. You can explain to a colleague why edges beat foreign-key props in this system.</p></div>
+    </div>
+  </details>
+</section>

@@ -1,0 +1,454 @@
+<!-- ============================================================ WEEK 5 -->
+<section class="view" id="week5">
+  <header class="weekhead">
+    <p class="eyebrow">Week 5 · Part III — the delivery machine</p>
+    <h2>Contracts &amp; waves</h2>
+    <p class="wintro">DDE's build discipline in one line: <b>build to contracts, never to running code</b>. Events and API contracts carry JSON Schemas inside the graph; producer/consumer choreography <em>is</em> the dependency model; a planner turns that model into parallel build waves; and a context package hands each builder everything it needs in one call. This week you build all four.</p>
+    <ul class="wgoals">
+      <li><b>Concept:</b> the contract IS the specification</li>
+      <li><b>Build:</b> Event/Contract nodes + <code>validate_schema</code></li>
+      <li><b>Build:</b> <code>compute_wave_plan</code> (Kahn's algorithm, cycle-refusal)</li>
+      <li><b>Build:</b> <code>query_context_package</code></li>
+    </ul>
+    <div class="wtools"><button data-expand="week5">Expand all lessons</button><button data-collapse="week5">Collapse all</button></div>
+  </header>
+
+  <details class="lesson" data-week="week5" id="l51">
+    <summary><span class="lnum">5.1</span><span class="ltitle">Events &amp; contracts carry schemas</span><span class="lconcept">validate_schema</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l51" aria-label="Mark lesson 5.1 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">An <b>Event</b> node is choreography currency: a name like <code>c2c.contract.booked</code>, a JSON Schema stored inline, an example payload. A <b>Contract</b> node covers request/response APIs and data DDL, with a status lifecycle of its own: <code>SPECIFIED → BUILT → VERIFIED</code> — specified at design, built when code exists, verified at integration. The schema travels <em>inside</em> the node, so one query gives a builder the exact shape to code against; a real schema validator makes "conforms to the contract" a machine question.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p>Event at <code>model.go:337-347</code>, Contract at <code>:349-363</code>. <code>query_contract</code> is deliberately thin: try Contract by id, fall back to Event, return the full node — the schema is the payload. <code>validate_schema</code> compiles with <code>santhosh-tekuri/jsonschema/v6</code> and returns path-addressed errors. Event names follow <code>c2c.{entity}.{past-tense-state}</code> (ADR-event-naming-convention-N0SS).</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Extend the model.</strong> Add a Contract transition map (<code>"" → SPECIFIED → BUILT → VERIFIED</code>, plus BLOCKED escapes if you like). Events are static — no lifecycle.</p></li>
+        <li><p><strong>Add the validator dependency and the check:</strong></p>
+          <div class="code"><pre><code>cd server &amp;&amp; go get github.com/santhosh-tekuri/jsonschema/v6</code></pre></div>
+          <div class="code" data-file><span class="fname">server/internal/graph/schema.go</span><pre><code>package graph
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/santhosh-tekuri/jsonschema/v6"
+)
+
+type SchemaError struct {
+	Path    string `json:"path"`
+	Message string `json:"message"`
+}
+
+// ValidateAgainst compiles a JSON Schema (given as a string) and
+// validates a payload, returning per-path errors — real Draft
+// validation, not field-name eyeballing.
+func ValidateAgainst(schemaJSON string, payload []byte) (bool, []SchemaError, error) {
+	var doc any
+	if err := json.Unmarshal([]byte(schemaJSON), &amp;doc); err != nil {
+		return false, nil, fmt.Errorf("schema_invalid_json: %w", err)
+	}
+	c := jsonschema.NewCompiler()
+	if err := c.AddResource("mem://contract.json", doc); err != nil {
+		return false, nil, fmt.Errorf("schema_add: %w", err)
+	}
+	sch, err := c.Compile("mem://contract.json")
+	if err != nil {
+		return false, nil, fmt.Errorf("schema_compile: %w", err)
+	}
+	var inst any
+	if err := json.Unmarshal(payload, &amp;inst); err != nil {
+		return false, nil, fmt.Errorf("payload_invalid_json: %w", err)
+	}
+	if err := sch.Validate(inst); err != nil {
+		var out []SchemaError
+		if ve, ok := err.(*jsonschema.ValidationError); ok {
+			for _, cause := range ve.Causes {
+				out = append(out, SchemaError{
+					Path:    "/" + strings.Join(anyToStrings(cause.InstanceLocation), "/"),
+					Message: cause.ErrorKind.LocalizedString(nil),
+				})
+			}
+			if len(out) == 0 {
+				out = append(out, SchemaError{Path: "/", Message: ve.Error()})
+			}
+		} else {
+			out = append(out, SchemaError{Path: "/", Message: err.Error()})
+		}
+		return false, out, nil
+	}
+	return true, nil, nil
+}
+
+func anyToStrings(in []string) []string { return in }
+
+// ValidateEventPayload: resolve the node (Event first, Contract
+// fallback — the query_contract order), pick its schema, validate.
+func (s *Store) ValidateEventPayload(id string, payload []byte) (bool, []SchemaError, error) {
+	n, err := s.GetNode(id)
+	if err != nil {
+		return false, nil, err
+	}
+	schemaStr, _ := n.Props["schema"].(string)
+	if schemaStr == "" {
+		schemaStr, _ = n.Props["request_schema"].(string)
+	}
+	if schemaStr == "" {
+		return false, nil, fmt.Errorf("no_schema: %s carries no schema/request_schema", id)
+	}
+	return ValidateAgainst(schemaStr, payload)
+}</code></pre></div>
+          <p>(Check the exact <code>ValidationError</code> field names against the v6 version you pinned — the point is per-path errors, not this precise traversal.)</p></li>
+        <li><p><strong>Author your first real event contract</strong> — the capstone's opening move, so write it carefully:</p>
+          <div class="code"><pre><code>go run ./server/cmd/minidde create-node --id evt-contract-booked --type Event --props '{
+  "name": "c2c.contract.booked",
+  "eli10": "Fired the moment a booking becomes a real Contract with an SAP Contract Number. Everyone downstream (billing, collections) starts their work from this signal.",
+  "schema": "{\"type\":\"object\",\"required\":[\"event_id\",\"sap_contract_number\",\"client_name\",\"total_value\",\"booked_at\"],\"properties\":{\"event_id\":{\"type\":\"string\"},\"sap_contract_number\":{\"type\":\"string\",\"pattern\":\"^SAP-[0-9]{4}-[0-9]{6}$\"},\"client_name\":{\"type\":\"string\"},\"total_value\":{\"type\":\"number\"},\"booked_at\":{\"type\":\"string\",\"format\":\"date-time\"}}}"
+}'</code></pre></div>
+          <p>Two things to notice: <code>Event</code> isn't in your <code>eli10Types</code>, so the eli10 here is voluntary (and still good practice); and the schema is a JSON <em>string inside</em> the props JSON (escaped) — exactly how the real node stores it.</p></li>
+        <li><p><strong>Expose the tools</strong>: <code>query_contract(id)</code> (Contract-then-Event fallback, return the whole node) and <code>validate_schema(id, payload)</code> returning <code>{valid, errors[]}</code>. Then test from the inspector: a conformant booked-payload passes; drop <code>sap_contract_number</code> and read the path-addressed error.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p><code>validate_schema</code> gives <code>valid:true</code> for a good payload and a <code>/sap_contract_number</code>-pathed error for a malformed one (wrong pattern) — the difference between "looks right" and "conforms".</p></div>
+      <div class="callout war"><h4>Why it exists</h4><p>"Not built yet" is never a reason to skip implementation — the contract IS the specification (<code>.claude/rules/bld-contract-compliance.md</code>). That only holds if contracts are precise enough to validate against mechanically. A schema nobody can run is a wish; <code>validate_schema</code> is what makes it law.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week5" id="l52">
+    <summary><span class="lnum">5.2</span><span class="ltitle">Choreography is the dependency model</span><span class="lconcept">PRODUCES / CONSUMES</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l52" aria-label="Mark lesson 5.2 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">Nowhere in DDE does anyone declare "billing depends on booking." Dependency is <b>derived</b> from event choreography: if booking <code>PRODUCES</code> an event that billing <code>CONSUMES</code>, billing depends on booking — full stop. The consequence cuts both ways: model the edges and the planner sees the truth; forget an edge and <em>the dependency does not exist</em> to any downstream machinery.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p>The planner's Cypher reads exactly one pattern: <code>(producer)-[:PRODUCES]-&gt;(e:Event)&lt;-[:CONSUMES]-(consumer)</code> (<code>wave.go:167-169</code>). Each pair becomes one WP-level edge: <b>the consumer's first WP depends on the producer's last WP</b> — the coarsest ordering that guarantees the producer is fully built first. Even infrastructure enters the ordering only as CONSUMES edges on capability events (<code>.claude/rules/bld-graph-maintenance.md</code>).</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Wire the capstone choreography into the graph.</strong> Create <code>billing-core</code> and <code>collections-core</code> Responsibilities (governed by the PDR, lineage edges, eli10s), then:</p>
+          <div class="code"><pre><code>M="go run ./server/cmd/minidde"
+$M link --src booking-core     --dst evt-contract-booked --type PRODUCES
+$M link --src billing-core     --dst evt-contract-booked --type CONSUMES
+$M link --src collections-core --dst evt-contract-booked --type CONSUMES</code></pre></div>
+          <p>Add the remaining capstone events now (schemas can start minimal and tighten in week 8): <code>evt-invoice-issued</code> (billing → collections, booking), <code>evt-receivable-settled</code> (collections → billing, booking), <code>evt-contract-closed</code> (booking → all).</p></li>
+        <li><p><strong>Give each Responsibility work packages</strong> with a <code>sequence</code> prop — booking: <code>wp-book-api</code> (1), <code>wp-book-events</code> (2); billing: <code>wp-bill-consume</code> (1), <code>wp-bill-issue</code> (2); collections: <code>wp-col-consume</code> (1), <code>wp-col-settle</code> (2). Each <code>BELONGS_TO</code> its Responsibility.</p></li>
+        <li><p><strong>Derive choreography dependencies in code</strong> — the heart of this lesson:</p>
+          <div class="code" data-file><span class="fname">server/internal/graph/choreography.go</span><pre><code>package graph
+
+import "sort"
+
+// wpsOf returns a responsibility's WorkPackages ordered by sequence
+// (id tie-break) — determinism matters: identical graphs must yield
+// identical plans.
+func (s *Store) wpsOf(respID string) ([]Node, error) {
+	edges, err := s.Neighbors(respID, "in", EdgeBelongsTo)
+	if err != nil {
+		return nil, err
+	}
+	var wps []Node
+	for _, e := range edges {
+		n, err := s.GetNode(e.Src)
+		if err != nil {
+			return nil, err
+		}
+		wps = append(wps, n)
+	}
+	sort.Slice(wps, func(i, j int) bool {
+		si, _ := wps[i].Props["sequence"].(float64)
+		sj, _ := wps[j].Props["sequence"].(float64)
+		if si != sj {
+			return si &lt; sj
+		}
+		return wps[i].ID &lt; wps[j].ID
+	})
+	return wps, nil
+}
+
+// ChoreographyDeps derives WP→WP dependencies from PRODUCES/CONSUMES:
+// for each event, each consumer's FIRST wp depends on each producer's
+// LAST wp.
+func (s *Store) ChoreographyDeps() (map[string][]string, error) {
+	deps := map[string][]string{} // wp → the wps it depends on
+	events, err := s.QueryAll("Event", "")
+	if err != nil {
+		return nil, err
+	}
+	for _, evt := range events {
+		producers, err := s.Neighbors(evt.ID, "in", EdgeProduces)
+		if err != nil {
+			return nil, err
+		}
+		consumers, err := s.Neighbors(evt.ID, "in", EdgeConsumes)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range consumers {
+			for _, p := range producers {
+				if c.Src == p.Src {
+					continue // self-loops never count
+				}
+				pWPs, err := s.wpsOf(p.Src)
+				if err != nil {
+					return nil, err
+				}
+				cWPs, err := s.wpsOf(c.Src)
+				if err != nil {
+					return nil, err
+				}
+				if len(pWPs) == 0 || len(cWPs) == 0 {
+					continue
+				}
+				first, last := cWPs[0].ID, pWPs[len(pWPs)-1].ID
+				deps[first] = append(deps[first], last)
+			}
+		}
+	}
+	return deps, nil
+}</code></pre></div></li>
+        <li><p><strong>Test it:</strong> with the capstone graph seeded, <code>ChoreographyDeps()</code> must say <code>wp-bill-consume</code> and <code>wp-col-consume</code> each depend on <code>wp-book-events</code> (booking's <em>last</em> WP). Then delete the <code>CONSUMES</code> edge from collections and re-run: the dependency vanishes — the graph stopped telling the planner the truth. Put the edge back.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>The derived map matches your hand-drawn picture of the capstone flow, and removing one edge demonstrably changes the plan — you can now explain "if it isn't an edge, it doesn't exist" from experience.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week5" id="l53">
+    <summary><span class="lnum">5.3</span><span class="ltitle">The wave planner</span><span class="lconcept">compute_wave_plan</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l53" aria-label="Mark lesson 5.3 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">A <b>wave</b> is a set of work packages whose dependencies are all satisfied by earlier waves — the parallel-execution unit for dispatching builders. The planner merges three dependency sources (explicit <code>DEPENDS_ON</code> edges, derived choreography, implicit within-responsibility sequence), then runs <b>Kahn's algorithm</b>. The design decision worth tattooing somewhere: on a cycle, it <b>persists nothing and fails loudly, naming the members</b> — a silently-persisted cyclic plan yields zero claimable work packages and looks like success.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>wave.go:32-76</code>: load WPs → adjacency from explicit + choreography + sequential (a sequential edge that would close a cycle is skipped via a reachability check) → Kahn with sorted queues for determinism → <code>wave = max(dep waves) + 1</code> → cycle members reported, nothing persisted (<code>compute_wave_plan.go:31-39</code>). Persisted derived edges are tagged <code>computed_by = "compute_wave_plan"</code> and excluded from the next run's input — a planner must never eat its own output.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Implement the planner:</strong></p>
+          <div class="code" data-file><span class="fname">server/internal/graph/wave.go</span><pre><code>package graph
+
+import (
+	"fmt"
+	"sort"
+)
+
+type Wave struct {
+	Number       int      `json:"number"`
+	WorkPackages []string `json:"work_packages"`
+}
+
+type WavePlan struct {
+	Waves          []Wave   `json:"waves"`
+	TotalWaves     int      `json:"total_waves"`
+	MaxParallelism int      `json:"max_parallelism"`
+	Cycles         []string `json:"cycles,omitempty"`
+}
+
+func (s *Store) ComputeWavePlan() (WavePlan, error) {
+	wps, err := s.QueryAll("WorkPackage", "")
+	if err != nil {
+		return WavePlan{}, err
+	}
+	deps := map[string]map[string]bool{} // wp → set of wps it depends on
+	add := func(wp, dep string) {
+		if deps[wp] == nil {
+			deps[wp] = map[string]bool{}
+		}
+		deps[wp][dep] = true
+	}
+	for _, wp := range wps {
+		deps[wp.ID] = deps[wp.ID] // ensure key exists
+	}
+
+	// Source 1: explicit DEPENDS_ON edges.
+	for _, wp := range wps {
+		out, err := s.Neighbors(wp.ID, "out", EdgeDependsOn)
+		if err != nil {
+			return WavePlan{}, err
+		}
+		for _, e := range out {
+			add(wp.ID, e.Dst)
+		}
+	}
+	// Source 2: choreography (lesson 5.2).
+	choreo, err := s.ChoreographyDeps()
+	if err != nil {
+		return WavePlan{}, err
+	}
+	for wp, ds := range choreo {
+		for _, d := range ds {
+			add(wp, d)
+		}
+	}
+	// Source 3: implicit sequence within each Responsibility.
+	resps, err := s.QueryAll("Responsibility", "")
+	if err != nil {
+		return WavePlan{}, err
+	}
+	for _, r := range resps {
+		seq, err := s.wpsOf(r.ID)
+		if err != nil {
+			return WavePlan{}, err
+		}
+		for i := 1; i &lt; len(seq); i++ {
+			add(seq[i].ID, seq[i-1].ID)
+		}
+	}
+
+	// Kahn's algorithm with sorted queues for determinism.
+	wave := map[string]int{}
+	remaining := map[string]map[string]bool{}
+	for wp, ds := range deps {
+		remaining[wp] = map[string]bool{}
+		for d := range ds {
+			remaining[wp][d] = true
+		}
+	}
+	for {
+		var ready []string
+		for wp, ds := range remaining {
+			if len(ds) == 0 {
+				ready = append(ready, wp)
+			}
+		}
+		if len(ready) == 0 {
+			break
+		}
+		sort.Strings(ready)
+		for _, wp := range ready {
+			w := 1
+			for d := range deps[wp] {
+				if dw, ok := wave[d]; ok &amp;&amp; dw &gt;= w {
+					w = dw + 1
+				}
+			}
+			wave[wp] = w
+			delete(remaining, wp)
+			for _, ds := range remaining {
+				delete(ds, wp)
+			}
+		}
+	}
+
+	// Anything left is a cycle member: REFUSE, persist nothing.
+	if len(remaining) &gt; 0 {
+		var members []string
+		for wp := range remaining {
+			members = append(members, wp)
+		}
+		sort.Strings(members)
+		return WavePlan{Cycles: members},
+			fmt.Errorf("dependency_cycle: %v — fix the graph; an unaddressed "+
+				"cycle leaves zero claimable work packages", members)
+	}
+
+	// Persist wave numbers; assemble the plan.
+	byWave := map[int][]string{}
+	maxW, maxPar := 0, 0
+	for wp, w := range wave {
+		byWave[w] = append(byWave[w], wp)
+		if w &gt; maxW {
+			maxW = w
+		}
+	}
+	var plan WavePlan
+	for w := 1; w &lt;= maxW; w++ {
+		sort.Strings(byWave[w])
+		if len(byWave[w]) &gt; maxPar {
+			maxPar = len(byWave[w])
+		}
+		plan.Waves = append(plan.Waves, Wave{Number: w, WorkPackages: byWave[w]})
+		for _, wp := range byWave[w] {
+			s.UpdateNode(wp, map[string]any{"wave": w})
+		}
+	}
+	plan.TotalWaves, plan.MaxParallelism = maxW, maxPar
+	return plan, nil
+}</code></pre></div></li>
+        <li><p><strong>Expose it as the <code>compute_wave_plan</code> tool</strong> and run it on the capstone graph. Expected shape: wave 1 = <code>wp-book-api</code>; wave 2 = <code>wp-book-events</code>; wave 3 = the two consume-WPs <em>in parallel</em>; wave 4 = <code>wp-bill-issue</code>, <code>wp-col-settle</code>. Draw it on paper first, then compare.</p></li>
+        <li><p><strong>Manufacture a cycle</strong> — <code>link --src wp-book-api --dst wp-col-settle --type DEPENDS_ON</code> — and re-run. You must get the loud error naming the members, and (assert!) no <code>wave</code> props were written. Remove the edge; plan returns.</p></li>
+        <li><p><strong>Determinism test:</strong> run the planner 5 times; byte-identical JSON every time. If not, you missed a <code>sort</code>.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>The capstone plan matches your drawing; max parallelism is 2 (the week-8 promise: billing and collections build simultaneously); cycles refuse loudly and persist nothing; output is deterministic.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week5" id="l54">
+    <summary><span class="lnum">5.4</span><span class="ltitle">Context packages</span><span class="lconcept">query_context_package</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l54" aria-label="Mark lesson 5.4 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">Before a builder agent writes a line of code, it makes <b>one call</b>: <code>query_context_package(responsibility)</code> — and receives the responsibility, the full specification text, every consumed and produced event <em>with schemas</em>, governing decisions, applicable patterns, open findings, and its work packages. Self-contained context is what makes autonomous build possible: no grepping, no guessing, no "I'll just look at the sibling service."</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>AssembleContext</code> (<code>internal/context/assembler.go:105-131</code>): Responsibility + SDD body read from disk via the <code>DOCUMENTED_BY</code> Document's <code>path</code> + events on CONSUMES/PRODUCES + <code>GOVERNED_BY</code> decisions + patterns (universal or domain-matched) + findings bucketed by status + WPs + the variant's DoD checklist. Default is a <em>lean projection</em> (inline bodies stripped, recoverable by path) — payload size is a first-class design concern when your consumer is a context window.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Define the package and assemble it:</strong></p>
+          <div class="code" data-file><span class="fname">server/internal/graph/context.go</span><pre><code>package graph
+
+import "os"
+
+type ContextPackage struct {
+	Responsibility Node   `json:"responsibility"`
+	Specification  string `json:"specification"`
+	EventsConsumed []Node `json:"events_consumed"`
+	EventsProduced []Node `json:"events_produced"`
+	Decisions      []Node `json:"decisions"`
+	OpenFindings   []Node `json:"open_findings"`
+	WorkPackages   []Node `json:"work_packages"`
+}
+
+func (s *Store) AssembleContext(respID string) (ContextPackage, error) {
+	var pkg ContextPackage
+	resp, err := s.GetNode(respID)
+	if err != nil {
+		return pkg, err
+	}
+	pkg.Responsibility = resp
+
+	// Specification: follow DOCUMENTED_BY to a Document, read its
+	// path from disk — the one intentional full-text copy.
+	docs, _ := s.Neighbors(respID, "out", EdgeDocumentedBy)
+	for _, e := range docs {
+		d, err := s.GetNode(e.Dst)
+		if err != nil {
+			continue
+		}
+		if path, ok := d.Props["path"].(string); ok {
+			if body, err := os.ReadFile(path); err == nil {
+				pkg.Specification = string(body)
+				break
+			}
+		}
+	}
+
+	collect := func(dir, edgeType string) []Node {
+		var out []Node
+		edges, _ := s.Neighbors(respID, dir, edgeType)
+		for _, e := range edges {
+			other := e.Dst
+			if dir == "in" {
+				other = e.Src
+			}
+			if n, err := s.GetNode(other); err == nil {
+				out = append(out, n)
+			}
+		}
+		return out
+	}
+	pkg.EventsConsumed = collect("out", EdgeConsumes)
+	pkg.EventsProduced = collect("out", EdgeProduces)
+	pkg.Decisions = collect("out", EdgeGovernedBy)
+	pkg.WorkPackages = collect("in", EdgeBelongsTo)
+	for _, f := range collect("in", EdgeAffects) {
+		if f.Status == "OPEN" {
+			pkg.OpenFindings = append(pkg.OpenFindings, f)
+		}
+	}
+	return pkg, nil
+}</code></pre></div></li>
+        <li><p><strong>Give the capstone Responsibilities specifications to carry.</strong> Write a one-page spec per service at <code>docs/sdd/&lt;resp&gt;-sdd.md</code> (what it owns, its tables, its endpoints, which events in/out — crib the shapes from the week-8 overview). Create a <code>Document</code> node per spec with a <code>path</code> prop and a <code>DOCUMENTED_BY</code> edge from the Responsibility.</p></li>
+        <li><p><strong>Expose <code>query_context_package</code></strong> as a tool. Then run it for <code>billing-core</code> in the inspector and read the result <em>as if you were the builder</em>: could you implement mini-billing from this payload alone, without opening any other file? If no — the spec is too thin; fix the spec, not the tool.</p></li>
+        <li><p><strong>Add the pre-dispatch validation trigger.</strong> A second tool, <code>compute_context_packages</code>, that loops every Responsibility, attempts assembly, and reports <code>{ok: [...], failed: [{id, reason}]}</code> — storing nothing. It answers "can every builder be handed complete context?" <em>before</em> anyone dispatches. Run it; fix whatever it flags (a Responsibility with no spec Document is the classic).</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint — end of week 5</h4><p><code>query_context_package("billing-core")</code> returns spec text + both event schemas + the PDR + open findings in one payload, and you'd genuinely be able to build from it. <code>compute_context_packages</code> reports all green.</p></div>
+      <div class="callout war"><h4>Why it exists</h4><p>The real assembler strips inline bodies by default (<code>ADR-lean-default-projection-P6EA</code>) and has a budget mode with per-phase BFS depths and a 500-node cap. Why? Because the consumer is a context window: an over-eager context package can crowd out the model's working room as surely as a thin one starves it. Payload discipline is agent ergonomics.</p></div>
+    </div>
+  </details>
+</section>
