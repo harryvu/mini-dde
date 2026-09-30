@@ -21,10 +21,10 @@
     <tr><td>Gates</td><td>3 gates, evidence, DoD-6 (W6)</td><td>22 seeded gates, scope-aware + variant-aware condition sets, evidence freshness, content validators with sentinel phrases, DoD-11/12</td></tr>
     <tr><td>Verdicts</td><td>4 reviewers, 2 scales, latest-wins (W6)</td><td>9-reviewer canonical enum with alias normalization, <code>finding_count_plausible</code> superficiality tripwire</td></tr>
     <tr><td>Hooks</td><td>Gate flag-file pair + precondition + pre-commit (W6)</td><td>~48 hooks across 8 events, sectioned pre-commit with ~25 sections, diff-scoped pre-push governance lint</td></tr>
-    <tr><td>Skills</td><td>mini-ideate, mini-promote (W7)</td><td>100+ skills; ideate→challenge→promote→design→build→accept, verify-or-mark graph writes, banner-schema'd DA questions</td></tr>
+    <tr><td>Skills</td><td>mini-ideate/promote (W7) + the W8–W9 estate: mini-backlog, -challenge, -scope-review, -dedup, -route, -orchestrate…; full 57-skill atlas in 9.4</td><td>100+ skills; ideate→challenge→promote→design→build→accept, verify-or-mark graph writes, banner-schema'd DA questions</td></tr>
     <tr><td>Sessions</td><td>assign/claim(CAS)/complete (W7)</td><td>Same + runner provenance, audit-marker enforcement, respstatus rollup on completion</td></tr>
     <tr><td>PCC</td><td>Next.js, 3 screens, poll (W7)</td><td>Vite/React 19, 11+ surfaces, REST + GraphQL dual plane, WebSocket cache invalidation, d3 choreography diagrams</td></tr>
-    <tr><td>The app itself</td><td>mini-C2C: 3 services + shell UI (W8)</td><td>C2C Ono: 5+ domains, ~60 services, AlloyDB/Spanner/Pub/Sub/Cloud Run, release trains</td></tr>
+    <tr><td>The app itself</td><td>mini-C2C: 3 services + shell UI (W10)</td><td>C2C Ono: 5+ domains, ~60 services, AlloyDB/Spanner/Pub/Sub/Cloud Run, release trains</td></tr>
   </table></div>
 
   <h3 class="sech">Node types (mini set)</h3>
@@ -57,7 +57,7 @@
     <tr><td><code>DEPENDS_ON</code></td><td>WorkPackage → WorkPackage</td><td>explicit ordering (planner input)</td></tr>
     <tr><td><code>WORKS_ON</code></td><td>AgentSession → Responsibility/WP</td><td>who's on it</td></tr>
     <tr><td><code>VERDICT_FOR</code></td><td>Verdict → Responsibility</td><td>review output</td></tr>
-    <tr><td><code>DEFINES</code></td><td>Contract → Event</td><td>which contract governs which event (minted in 8.1)</td></tr>
+    <tr><td><code>DEFINES</code></td><td>Contract → Event</td><td>which contract governs which event (minted in 10.1)</td></tr>
     <tr><td><code>PROMOTES_TO</code></td><td>CIR → Decision</td><td>ideation lineage</td></tr>
     <tr><td><code>SUPERSEDES</code></td><td>Decision → Decision</td><td>record replacement (symmetric with file pointers)</td></tr>
     <tr><td><code>BLOCKS</code></td><td>ExternalDependency → Finding</td><td>the deferral authorization</td></tr>
@@ -79,7 +79,7 @@
   <h3 class="sech">Reading list into the real system (in this order)</h3>
   <div class="tablewrap"><table>
     <tr><th>#</th><th>Read</th><th>Because</th></tr>
-    <tr><td>1</td><td><code>docs/governance-framework.md</code></td><td>the whole framework — read before week 1 and again after week 8</td></tr>
+    <tr><td>1</td><td><code>docs/governance-framework.md</code></td><td>the whole framework — read before week 1 and again after week 10</td></tr>
     <tr><td>2</td><td><code>CLAUDE.md</code> (root)</td><td>the operational map: stack, lifecycle, skills, layout</td></tr>
     <tr><td>3</td><td><code>.claude/rules/bld-knowledge-graph-first.md</code> + <code>bld-graph-edge-contracts.md</code></td><td>the graph discipline you cloned in weeks 1–2</td></tr>
     <tr><td>4</td><td><code>builder/server/internal/graph/model.go</code></td><td>the full schema — skim the transition maps and edge constants</td></tr>

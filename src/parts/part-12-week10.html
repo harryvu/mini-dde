@@ -1,0 +1,236 @@
+<!-- ============================================================ WEEK 10 -->
+<section class="view" id="week10">
+  <header class="weekhead">
+    <p class="eyebrow">Week 10 · Part V — prove it</p>
+    <h2>Capstone: mini-C2C, built through mini-DDE</h2>
+    <p class="wintro">Everything converges. You'll build a real event-driven application — <b>mini-booking → mini-billing → mini-collections</b>, Go services talking only through events on a hashed contract-spine ordering key, plus a Next.js frontend on the C2C three-zone shell — and you'll build it <em>through</em> your mini-DDE: designed in the graph, planned in waves, built to contracts, verified by gates, accepted with verdicts and a DoD. The app is the exam; the process is the lesson.</p>
+    <ul class="wgoals">
+      <li><b>The flow:</b> booking mints a Contract (fake SAP number) → billing issues Invoices → collections settles Receivables → booking closes the spine</li>
+      <li><b>The spine:</b> <code>setup → active → in fulfilment → financially closing → closed</code></li>
+      <li><b>The discipline:</b> outbox, idempotent consumers, guarded transitions</li>
+      <li><b>The proof:</b> <code>acceptance_exit</code> passes; COMPLETE through the hooks</li>
+    </ul>
+    <div class="wtools"><button data-expand="week10">Expand all lessons</button><button data-collapse="week10">Collapse all</button></div>
+  </header>
+
+  <details class="lesson" data-week="week10" id="l101">
+    <summary><span class="lnum">10.1</span><span class="ltitle">Ideate → promote → plan</span><span class="lconcept">stages pre-0 → 3</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l101" aria-label="Mark lesson 10.1 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">Before a line of service code: finish the design plane. The graph already holds the skeleton from week 5 (three Responsibilities, events, WPs); now you complete it the way Stage 0–3 would — governance via the funnel, contracts tightened to validation-grade, specs complete enough to build from, and a wave plan whose parallelism you'll actually use.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p>This lesson compresses <code>/bld-strategic-design</code> (brief, dependency tables, no TBDs) + <code>/bld-autonomous-design</code> (one Designer authors the complete SDD; parallel reviewers; a bounded converge loop drives every finding terminal — "zero unresolved decisions") + Stage 3 task generation. The business shape you're cloning: booking's <code>svc_handoff_mobilisation</code> produces <code>c2c.contract.booked</code>; billing's outbox relay publishes <code>c2c.invoice.issued</code>; collections tracks receivables in an append-only action log. The locked vocabulary (Contract, Invoice, Receivable; the 5 spine states; SAP Contract Number as the only lifecycle key) is <code>DDR-sap-contract-number-A57K</code> + <code>.claude/rules/flywheel-vocabulary.md</code>.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Run the funnel for the data decision.</strong> <code>/mini-ideate</code>: "one shared event envelope, ordered per contract by a hashed SAP Contract Number". <code>/mini-challenge</code> it (riskiest assumption: is a hash necessary in a local toy? — yes, because the ordering key travels in transport metadata, and metadata escapes payload access control; you are cloning the reasoning, not the threat model). Validate, then <code>/mini-promote</code> (watch verify-or-mark read both writes back) and <code>/mini-scope-review</code> (expect CLEAR) → a <b>DDR</b>: envelope fields <code>event_id, event_type, schema_version, ordering_key, occurred_at, payload</code>; <code>ordering_key = hex(sha256(sap))[:16]</code>, never the raw number; consumers dedup on <code>event_id</code>. Accept it; edge every Responsibility <code>GOVERNED_BY</code> it.</p></li>
+        <li><p><strong>Tighten all five event schemas</strong> to validation-grade (required fields, the <code>^SAP-[0-9]{4}-[0-9]{6}$</code> pattern, date-time formats):</p>
+          <div class="tablewrap"><table>
+            <tr><th>#</th><th>Event</th><th>Producer → consumers</th><th>Payload (beyond envelope)</th><th>Spine effect</th></tr>
+            <tr><td>1</td><td><code>c2c.contract.booked</code></td><td>booking → billing, collections</td><td class="wrapcode"><code>sap_contract_number, client_name, total_value, booked_at</code></td><td>setup → active</td></tr>
+            <tr><td>2</td><td><code>c2c.booking.completed</code></td><td>booking → booking (via the bus, on purpose)</td><td class="wrapcode"><code>sap_contract_number, completed_at</code></td><td>active → in fulfilment</td></tr>
+            <tr><td>3</td><td><code>c2c.invoice.issued</code></td><td>billing → collections, booking</td><td class="wrapcode"><code>invoice_id, sap_contract_number, amount, issued_at</code></td><td>in fulfilment → financially closing (first issue)</td></tr>
+            <tr><td>4</td><td><code>c2c.receivable.settled</code></td><td>collections → billing, booking</td><td class="wrapcode"><code>receivable_id, invoice_id, sap_contract_number, settled_at</code></td><td>— (booking counts)</td></tr>
+            <tr><td>5</td><td><code>c2c.contract.closed</code></td><td>booking → all</td><td class="wrapcode"><code>sap_contract_number, closed_at</code></td><td>financially closing → closed</td></tr>
+          </table></div>
+          <p>Event #2 exists to teach symmetry: a service consuming its own event through the bus behaves exactly like any other consumer — same dedup, same ordering. (It also adds no build dependency: <code>ChoreographyDeps</code>' <code>producer.id &lt;&gt; consumer.id</code> guard skips self-consumption.)</p>
+          <p>Then give each contract a lifecycle-bearing home: mint one <code>Contract</code> node per event (<code>ctr-contract-booked</code> … five in all, props <code>{"event": "evt-contract-booked"}</code>), born <code>SPECIFIED</code> through the 5.1 map, and link each <code>-[:DEFINES]-&gt;</code> its Event — one last edge type to mint (<code>EdgeDefines = "DEFINES"</code>, added to week 1's constants and allowlist; it is the real system's Contract → Event edge, and it makes <code>query_contract</code>'s Contract-then-Event fallback non-vacuous at last). The Event keeps carrying the schema; the Contract node tracks how far the <em>implementation</em> of that schema has progressed — SPECIFIED now, BUILT in 10.3, VERIFIED in 10.4.</p></li>
+        <li><p><strong>Complete the specs</strong> (<code>docs/sdd/*-sdd.md</code> from week 5) to build-from-alone grade. Each spec must state: owned tables, HTTP surface, events in/out with the spine effect, and the invariants — booking is the <b>single writer of the spine state machine</b>; billing's invoice statuses (<code>draft|issued|paid</code>) and collections' receivable statuses (<code>open|reminded|settled</code>) are <em>substates on their own objects, never a second spine</em>. Run <code>compute_context_packages</code> until all green.</p></li>
+        <li><p><strong>Plan and freeze.</strong> <code>compute_wave_plan</code> — expected: wave 1 <code>wp-book-api</code>; wave 2 <code>wp-book-events</code>; wave 3 <code>wp-bill-consume</code> ∥ <code>wp-col-consume</code>; wave 4 <code>wp-bill-issue</code> ∥ <code>wp-col-settle</code>. Then walk all three Responsibilities to <code>DESIGN_COMPLETE</code> — which means passing <code>design_exit</code> first; your own hook from week 6 will make sure you don't skip it.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>DDR Accepted and governing all three services; 5 schemas reject malformed payloads via <code>validate_schema</code>; five Contract nodes at SPECIFIED, each DEFINES-linked to its Event; context packages all green; wave plan matches the drawing; all three Responsibilities at DESIGN_COMPLETE <em>through the gate</em>.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week10" id="l102">
+    <summary><span class="lnum">10.2</span><span class="ltitle">Foundation: envelope, outbox, contracts</span><span class="lconcept">stage 4</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l102" aria-label="Mark lesson 10.2 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">Stage 4 builds the <b>stable base every builder branches from</b>: shared types generated from contracts, the event envelope, local infra. After this lesson, <code>capstone/pkg/</code> is frozen — during the build week (er, lesson), shared code is read-only; if it has a bug, you register a finding, you don't hot-patch it from a service.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>/bld-foundation-build</code>: typed structs from every contract, shared libraries (<code>pkg/events</code>, <code>pkg/db</code>…) with no stubs, mocks per contract, Docker Compose infra, a reviewer ensemble, then commit to main — and <code>pkg/</code> becomes immutable for Stage 5 (<code>.claude/rules/bld-shared-code-immutable.md</code>: "if you need functionality that doesn't exist in pkg/, register a finding"). Your envelope clones <code>pkg/events/events.go</code> — including <code>SpineOrderingKey(sap) = hex(sha256(sap))[:16]</code>, byte-identical in spirit to the real one.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Create the module and the envelope:</strong> <code>mkdir -p capstone/pkg &amp;&amp; cd capstone/pkg &amp;&amp; go mod init minic2c/pkg</code>, add it to <code>go.work</code>.</p>
+          <div class="code" data-file><span class="fname">capstone/pkg/events/events.go</span><pre><code>package events
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"time"
+)
+
+// Event is the shared envelope. Payload stays raw until the concrete
+// contract pins the shape — the envelope is transport, not schema.
+type Event struct {
+	ID            string          `json:"event_id"`       // idempotency key
+	Type          string          `json:"event_type"`     // c2c.{entity}.{past-tense-state}
+	SchemaVersion string          `json:"schema_version"` // "1.0" default
+	OrderingKey   string          `json:"ordering_key"`
+	OccurredAt    time.Time       `json:"occurred_at"`
+	Payload       json.RawMessage `json:"payload"`
+}
+
+// SpineOrderingKey hashes the SAP Contract Number for use as the
+// per-contract ordering key. The RAW number never rides transport
+// metadata — metadata escapes payload access control (push bodies,
+// exports, logs), so the key is an anti-exposure control.
+func SpineOrderingKey(sapContractNumber string) string {
+	sum := sha256.Sum256([]byte(sapContractNumber))
+	return hex.EncodeToString(sum[:])[:16]
+}
+
+// Publisher is consumer-defined small: services depend on this, and
+// tests inject a RecordingPublisher.
+type Publisher interface {
+	Publish(topic string, e Event) error
+}</code></pre></div></li>
+        <li><p><strong>Write the outbox contract as shared SQL + a tiny helper.</strong> Every service gets the same two tables; the teaching transport is an <b>in-process drainer goroutine that HTTP-POSTs pending rows to a static subscriber list</b> — Pub/Sub push semantics (at-least-once, redelivery on non-200) with zero cloud dependencies:</p>
+          <div class="code" data-file><span class="fname">capstone/pkg/outbox/outbox.go (core)</span><pre><code>package outbox
+
+// Shared DDL every service applies — state change + outbox INSERT
+// always share one transaction; a separate drainer publishes.
+const DDL = `
+CREATE TABLE IF NOT EXISTS event_outbox (
+  event_id     TEXT PRIMARY KEY,
+  event_type   TEXT NOT NULL,
+  ordering_key TEXT NOT NULL,
+  envelope     TEXT NOT NULL,           -- full wire JSON
+  status       TEXT NOT NULL DEFAULT 'pending',  -- pending|published
+  created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+CREATE TABLE IF NOT EXISTS consumed_event (
+  event_id    TEXT PRIMARY KEY,        -- the dedup ledger
+  consumed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);`
+
+// Drainer: every second, POST each pending row to every subscriber;
+// mark published only when ALL subscribers returned 2xx. Redelivery
+// on failure is the at-least-once semantics consumers must survive.</code></pre></div>
+          <p>Implement the drainer loop yourself (~40 lines: <code>SELECT … WHERE status='pending' ORDER BY created_at</code>, POST the envelope to each subscriber URL, <code>UPDATE … SET status='published'</code> on all-2xx). Keep SQLite per service for the teaching build (one file each: <code>booking.db</code>, <code>billing.db</code>, <code>collections.db</code>) — and notice the two planes: <b>Memgraph holds the DDE metadata about the work</b> (responsibilities, contracts, gates), while <b>each service privately owns its runtime data</b> relationally, exactly as real services own their AlloyDB schemas and never touch the builder's graph. The pattern, not Postgres, is the lesson; note where the real system differs (AlloyDB, a separate drainer <em>service</em>, real Pub/Sub with <code>EnableMessageOrdering</code>).</p></li>
+        <li><p><strong>Generate typed payload structs from the contracts.</strong> One <code>capstone/pkg/contracts/types.go</code> with a struct per event payload, field names matching the JSON Schemas exactly. Write a contract test: marshal an example of each struct, run it through <code>validate_schema</code> (call your mini-DDE HTTP API from the test, or export <code>ValidateAgainst</code>) — <b>the structs are now mechanically chained to the graph's contracts</b>.</p></li>
+        <li><p><strong>Foundation exit.</strong> Mark the Contract nodes <code>SPECIFIED → BUILT</code>… no — read the map: BUILT means code exists; that's true only for the shared types. This is a judgment call the real system resolves cleanly: contract status tracks the <em>implementation</em>, so leave them SPECIFIED until 10.3. Instead: commit, tag <code>foundation-v1</code>, and declare <code>capstone/pkg/</code> frozen. Register a Pattern node while you're here: "state change + outbox row in one tx" — you'll cite it in reviews.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>Envelope + outbox + typed contracts compile; the contract test proves struct↔schema fidelity; <code>SpineOrderingKey("SAP-2026-000042")</code> returns a stable 16-hex-char key; foundation tagged and frozen.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week10" id="l103">
+    <summary><span class="lnum">10.3</span><span class="ltitle">Build the three services</span><span class="lconcept">stage 5</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l103" aria-label="Mark lesson 10.3 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">Now build <b>in wave order, to contracts, with the graph watching</b>. Each service follows the canonical Go service anatomy; each consumes events idempotently (dedup ledger + guarded single-winner updates); and you work like the pipeline works: claim the WP, build, test, submit evidence, pass the gate, move status — with findings registered at the point of friction, not remembered at the end.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p>The anatomy is <code>domains/booking/services/svc_handoff_mobilisation/</code>: <code>cmd/</code> composition root wiring strictly downward; <code>internal/{config,domain,store,transport,health}</code>; <code>Deps</code> struct DI with nil-tolerant defaults; consumer-defined interfaces; sentinel errors + <code>%w</code>; the consumed-event ledger checked at handler entry; guarded UPDATEs where rows-affected 0 means "lost the race, converge quietly". Push ACK/NACK maps to HTTP: nil error → 200 ACK (success, not-eligible, and duplicate are all handled-and-nil); any error → 5xx NACK and the broker redelivers. Full pattern reference: <code>.claude/rules/go-coding-patterns.md</code>.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Wave 1–2: mini-booking.</strong> Module <code>capstone/services/mini-booking</code> (add to <code>go.work</code>), anatomy: <code>cmd/mini-booking/main.go</code>, <code>internal/{config,domain,store,transport}</code>. Tables: <code>booking_request(id, client_name, total_value, status draft|submitted|booked)</code>, <code>contract(sap_contract_number PK, lifecycle_state, booked_at)</code> + the shared outbox DDL. HTTP: <code>POST /api/bookings</code>, <code>POST /api/bookings/{id}/book</code>, <code>GET /api/contracts/{sap}</code>, <code>POST /events</code>, <code>GET /healthz</code>, <code>GET /readyz</code>. The heart — book = mint + emit in ONE transaction:</p>
+          <div class="code" data-file><span class="fname">mini-booking/internal/store/book.go (the load-bearing write)</span><pre><code>// Book flips the request draft→booked, mints the Contract directly at
+// 'active' (setup → active collapses into the mint — the booked event
+// IS that transition), and inserts the c2c.contract.booked outbox row
+// — ONE transaction. There is never a booked-but-unannounced window.
+func (s *Store) Book(ctx context.Context, reqID string) (string, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Guarded single-winner update: rows-affected 0 = already booked.
+	res, err := tx.ExecContext(ctx, `UPDATE booking_request SET status='booked'
+		WHERE id=? AND status='submitted'`, reqID)
+	if err != nil {
+		return "", fmt.Errorf("%w: guard: %v", ErrStore, err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return "", ErrConflict // caller maps to 409 / handled-and-nil
+	}
+
+	sap := mintSAPNumber() // "SAP-2026-000042"-shaped, sequence from a table
+	if _, err := tx.ExecContext(ctx, `INSERT INTO contract
+		(sap_contract_number, lifecycle_state, booked_at)
+		VALUES (?, 'active', ?)`, sap, now()); err != nil {
+		return "", fmt.Errorf("%w: contract: %v", ErrStore, err)
+	}
+
+	evt, err := envelopeContractBooked(sap, reqID) // pkg/contracts types
+	if err != nil {
+		return "", err
+	}
+	if err := outbox.InsertTx(ctx, tx, evt); err != nil {
+		return "", fmt.Errorf("%w: outbox: %v", ErrStore, err)
+	}
+	return sap, tx.Commit()
+}</code></pre></div>
+          <p>Booking also owns the <b>spine state machine</b> — a <code>domain/spine.go</code> transition map (<code>setup→active→in fulfilment→financially closing→closed</code>) advanced <em>only</em> by consumed events (events 2, 3, 5) and by the all-receivables-settled check that emits event 5. Work the process: <code>assign_agent("builder", "booking-core")</code> → <code>claim_work</code> both WPs in sequence → build → <code>go test</code> → <code>submit_gate_evidence(booking-core, build_exit, tests_pass, &lt;output&gt;, true)</code> — plus the <code>compile_clean</code> and <code>no_stubs_detected</code> classes your 9.1 upgrade made mandatory; the gate now blocks on a missing class.</p></li>
+        <li><p><strong>The consumer template</strong> — write once in mini-billing, reuse in collections. Handler entry: dedup, dispatch, ACK/NACK:</p>
+          <div class="code" data-file><span class="fname">mini-billing/internal/transport/events.go</span><pre><code>// POST /events — the push receiver. Contract: 200 = ACK (consumed),
+// 5xx = NACK (the drainer redelivers). Duplicates are handled-and-nil.
+func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
+	var evt events.Event
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1&lt;&lt;20)).Decode(&amp;evt); err != nil {
+		http.Error(w, "bad envelope", http.StatusBadRequest) // poison: don't retry
+		return
+	}
+	fresh, err := h.store.MarkConsumed(r.Context(), evt.ID) // INSERT OR IGNORE
+	if err != nil {
+		http.Error(w, "ledger", http.StatusInternalServerError) // NACK
+		return
+	}
+	if !fresh {
+		w.WriteHeader(http.StatusOK) // duplicate: converge quietly, ACK
+		return
+	}
+	if err := h.dispatch(r.Context(), evt); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError) // NACK → redelivery
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}</code></pre></div>
+          <p><b>mini-billing</b> (waves 3–4): on <code>contract.booked</code> → create a draft invoice; <code>POST /api/invoices/{id}/issue</code> → guarded <code>draft→issued</code> + <code>c2c.invoice.issued</code> outbox row, one tx; on <code>receivable.settled</code> → invoice <code>paid</code>. <b>mini-collections</b> (waves 3–4): on <code>invoice.issued</code> → open a receivable; <code>remind</code> appends to the append-only <code>action_log</code>; <code>settle</code> = guarded transition + <code>c2c.receivable.settled</code> outbox row.</p></li>
+        <li><p><strong>Honor the wave plan.</strong> Waves 3–4 are parallel by design — if you have a study buddy, split billing/collections and feel contract-first coordination: you never read each other's code, only the schemas. Solo, alternate services per wave. Either way: <em>never</em> import one service from another; if you're tempted, the contract is missing something — <code>register_finding</code>, fix the contract, regenerate the shared type.</p></li>
+        <li><p><strong>Register findings as they happen.</strong> You will hit at least: a schema field you forgot (evidence: the validate_schema error), an ordering assumption (what if <code>invoice.issued</code> arrives before billing saw <code>contract.booked</code>? — findings classification <code>behavioral_assumption</code>; resolution: consumers must tolerate out-of-order across <em>different</em> ordering keys, and per-key ordering is only as good as the drainer's ORDER BY — write that down as a DDR amendment candidate). Friction captured at the point of friction is the week's real deliverable.</p></li>
+        <li><p><strong>Close Stage 5 per service:</strong> tests green (unit + a contract test per consumed event: valid payload → state change; malformed → NACK; duplicate → no double-write), DoD flipped honestly, all three evidence classes submitted (<code>tests_pass</code>, <code>compile_clean</code>, <code>no_stubs_detected</code>), <code>check_gate(_, build_exit)</code> passing, status walked to <code>BUILT</code> then <code>IN_REVIEW</code> — and run the week-6 reviewer ensemble (skeptic/consistency/craftsman via Claude) over each service. Mark each Contract node <code>BUILT</code>.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>Three services build and test green in isolation; each consumes idempotently (prove: POST the same envelope twice — one state change); <code>build_exit</code> passes for all three; the graph shows sessions, claims, evidence, verdicts, and findings telling the true story of the build.</p></div>
+      <div class="callout war"><h4>Why it exists</h4><p>The outbox is <em>the</em> distributed-systems lesson of the real repo: every producer writes state + outbox row in one transaction, a drainer publishes, consumers dedup on <code>event_id</code>, and a republish re-sends the same id so a correct consumer converges. Every piece exists because the naive alternative (publish-after-commit, or commit-after-publish) loses or duplicates events under crash — there is no third option, only the outbox.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week10" id="l104">
+    <summary><span class="lnum">10.4</span><span class="ltitle">Frontend, integration &amp; acceptance</span><span class="lconcept">stages 6–7</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l104" aria-label="Mark lesson 10.4 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">The last mile: a frontend on the <b>locked C2C shell</b>, integration verification in wave order, and the acceptance walk your hooks have been waiting to enforce. Then the graduation exercise: mapping every piece you built back to its full-size counterpart.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p>The shell is law: <code>domains/experience/docs/design/shell-spec.md</code> — Top Bar 60px <code>#1d1d1f</code>, Left Panel 280px <code>#e8e9ee</code>, Center Canvas <b>the only zone screens replace</b>; tokens verbatim (<code>--c2c-purple #a100ff</code>, <code>--c2c-purple-light #ecd9f8</code>, <code>--c2c-sidebar #e8e9ee</code>, <code>--c2c-divider #e0e2e8</code>, text <code>#565657</code>/<code>#b2b2b2</code>); Graphik for headings/CTAs, Inter for UI (Graphik is licensed — stack <code>Graphik, Inter, sans-serif</code>). Stage 6 is <code>/bld-integration-verify</code>: merge in wave order, replace mocks, full choreography simulation, "Mock remnants: ZERO". Stage 7 is <code>/bld-acceptance</code>: category reviews, verdicts, DoD re-audit, then COMPLETE — through <code>IN_REVIEW</code>, never straight from BUILT.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Build the shell.</strong> <code>npx create-next-app@latest capstone/ui</code>. One layout, three zones, tokens exact:</p>
+          <div class="code" data-file><span class="fname">capstone/ui/app/globals.css (tokens)</span><pre><code>:root {
+  --c2c-purple: #a100ff;
+  --c2c-black: #1d1d1f;
+  --c2c-purple-light: #ecd9f8;
+  --c2c-sidebar: #e8e9ee;
+  --c2c-divider: #e0e2e8;
+  --c2c-text-secondary: #565657;
+  --c2c-text-muted: #b2b2b2;
+}
+/* Three zones: top bar (60px, --c2c-black, brand in bold white),
+   left panel (280px, --c2c-sidebar, active item on --c2c-purple-light),
+   center canvas (white) — the ONLY zone your screens replace. */</code></pre></div>
+          <p>Left panel = the contract list (active row highlighted <code>--c2c-purple-light</code>). Center-canvas screens: <b>Booking pipeline</b> (requests table, a <code>--c2c-purple</code> "Book" CTA); <b>Contract detail</b> — the hero: a 5-step lifecycle-spine stepper (<code>setup … closed</code>) plus the event timeline, polling; <b>Invoices</b> (issue action); <b>Receivables</b> (remind/settle, action log visible); <b>Event bus monitor</b> — outbox rows across all three services with ordering keys, the choreography made visible. No custom hex beyond the tokens; headings <code>#1d1d1f</code>.</p></li>
+        <li><p><strong>Integration verification, wave order.</strong> Bring up all three services + drainers (a <code>Procfile</code>/<code>compose.yaml</code> or three terminals), then run the choreography end to end <em>and write it as a script</em> (<code>capstone/test/e2e.sh</code>): create booking → book it → assert billing has a draft invoice (poll, don't sleep-and-pray) → issue → assert collections opened a receivable → settle → assert invoice <code>paid</code> AND booking spine at <code>financially closing</code> → assert booking emits <code>contract.closed</code> → spine <code>closed</code>. Exception paths too: malformed envelope → 400, no retry; kill mini-collections mid-flow → drainer redelivers on restart, dedup absorbs the replays. Classify anything that breaks the way Stage 6 does: schema mismatch → foundation bug; behavioral assumption → contract needs enrichment (fix the DDR/schema, then the code); single-service defect → back to that service only. Register the findings; resolve them; re-run to green.</p></li>
+        <li><p><strong>Update the graph to match reality.</strong> If integration revealed an event flow the graph doesn't model (it usually does — did booking <em>really</em> consume <code>receivable.settled</code>?), fix the PRODUCES/CONSUMES edges now. Start with the ones 5.3 taught you to withhold from the planning graph: booking's PRODUCES on <code>booking.completed</code>/<code>contract.closed</code> (plus its self-CONSUMES on the former and the closed fan-out), collections' CONSUMES on <code>invoice.issued</code>, billing's on <code>receivable.settled</code>, booking's on both. Waves are history — from here the graph documents runtime truth for the next reader. The graph must match what the integrated system actually does, not what was designed. Mark Contracts <code>VERIFIED</code>; walk Responsibilities to <code>INTEGRATING</code> (the <code>integration-ish</code> statuses are yours to gate if you added one — otherwise proceed).</p></li>
+        <li><p><strong>The acceptance walk — your machinery, end to end.</strong> For each Responsibility: strategic review (ask Claude for the 3-sprint regret test over the whole capstone; <code>record_verdict(reviewer=strategic)</code>); re-audit the DoD (runbooks exist? observability = the event bus monitor + health endpoints — flip honestly); submit <code>deployment_verified</code> evidence (the e2e script's output); ensure every finding terminal; then <code>check_gate(_, acceptance_exit)</code> → and finally <code>update_status → COMPLETE</code>, which your week-6 hook only permits because the gate flag exists. If any step blocks — that's the system working; do the work it names.</p></li>
+        <li><p><strong>Graduate.</strong> Write the retro as a course-closing document (<code>docs/working/retro.md</code>): for each mini piece, name its full-size counterpart and one thing the real one does that yours doesn't — your store vs Neo4j+Cypher with 63 types; your 5 gates vs 22 with scope/variant awareness and evidence freshness; your hook pair vs a 48-hook estate; your single isolated <code>/mini-challenge</code> reviewer vs the multi-lens ensemble with banner-schema'd DA questions; your wave planner vs one that persists tagged derived edges. Then open the real repo and read, in this order: <code>docs/governance-framework.md</code> §7 again (it will read differently now), <code>bld-autonomous-build/SKILL.md</code> end to end, and <code>gate_scope_aware.go</code>. You'll recognize everything — that's what mastery feels like.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint — course complete</h4><p>The e2e script runs green from booking to <code>closed</code>; the UI shows the spine stepper advancing live; all three Responsibilities reached COMPLETE <em>through</em> <code>acceptance_exit</code>; your mini-PCC journey map shows three cards in the Complete column; and your graph — decisions, findings, evidence, verdicts, sessions — tells the whole story to someone who wasn't there. That someone is you, in six months.</p></div>
+      <div class="callout war"><h4>Why it exists — the whole course in one paragraph</h4><p>Every mechanism you built is an answer to "what happens under pressure, at scale, with agents?" State machines because statuses <em>will</em> be skipped; server-minted IDs because parallel sessions <em>will</em> collide; contracts-as-schemas because "not built yet" <em>will</em> be used as an excuse; gates-with-evidence because "tests pass, trust me" <em>will</em> be claimed; hooks because rules that live in prose <em>will</em> be ignored — measurably, twice, before they became mechanical. DDE is engineering discipline compiled into infrastructure. Now you've compiled it yourself.</p></div>
+    </div>
+  </details>
+</section>

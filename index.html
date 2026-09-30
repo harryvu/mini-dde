@@ -243,10 +243,10 @@
   <button class="menu-btn" id="menuBtn" aria-label="Toggle navigation">☰ Weeks</button>
   <div class="brand">
     <span class="mark">Build Your Own <b>Nexus</b></span>
-    <span class="sub">an 8-week course on mastering Nexus DDE by rebuilding it small</span>
+    <span class="sub">a 10-week course on mastering Nexus DDE by rebuilding it small</span>
   </div>
   <div class="progress-wrap">
-    <span class="progress-label" id="progLabel">0 / 32 lessons</span>
+    <span class="progress-label" id="progLabel">0 / 40 lessons</span>
     <div class="progress-bar" aria-hidden="true"><i id="progFill"></i></div>
   </div>
 </header>
@@ -265,8 +265,11 @@
   <a class="navlink" href="#week5" data-view="week5"><span class="wk">W5</span><span class="nlabel">Contracts &amp; waves</span><span class="ncount" data-wkcount="week5">0/4</span></a>
   <a class="navlink" href="#week6" data-view="week6"><span class="wk">W6</span><span class="nlabel">Gates &amp; enforcement</span><span class="ncount" data-wkcount="week6">0/4</span></a>
   <a class="navlink" href="#week7" data-view="week7"><span class="wk">W7</span><span class="nlabel">Pipeline &amp; mini-PCC</span><span class="ncount" data-wkcount="week7">0/4</span></a>
-  <h5>Part IV — prove it</h5>
-  <a class="navlink" href="#week8" data-view="week8"><span class="wk">W8</span><span class="nlabel">Capstone: mini-C2C</span><span class="ncount" data-wkcount="week8">0/4</span></a>
+  <h5>Part IV — the skill estate</h5>
+  <a class="navlink" href="#week8" data-view="week8"><span class="wk">W8</span><span class="nlabel">Skills I: idea → design</span><span class="ncount" data-wkcount="week8">0/4</span></a>
+  <a class="navlink" href="#week9" data-view="week9"><span class="wk">W9</span><span class="nlabel">Skills II: build → operate</span><span class="ncount" data-wkcount="week9">0/4</span></a>
+  <h5>Part V — prove it</h5>
+  <a class="navlink" href="#week10" data-view="week10"><span class="wk">W10</span><span class="nlabel">Capstone: mini-C2C</span><span class="ncount" data-wkcount="week10">0/4</span></a>
   <h5>Reference</h5>
   <a class="navlink" href="#reference" data-view="reference"><span class="wk">※</span><span class="nlabel">Cheat sheets &amp; glossary</span></a>
 </nav>
@@ -279,15 +282,15 @@
     <h1>Master Nexus DDE by building a small one.</h1>
     <p class="tagline">Nexus DDE is the C2C program's <b>decision-driven engineering</b> platform: a knowledge graph that is the source of truth, a governed mutation layer, an MCP tool surface agents build through, and a staged delivery pipeline with mechanical gates. The fastest way to master it is to rebuild its essential machinery at 1/100th scale — then use your clone to ship a real app the way the real system ships C2C.</p>
     <div class="statrow">
-      <div class="stat"><b>8</b><span>weeks, ~8–12 h each</span></div>
-      <div class="stat"><b>32</b><span>lessons, 1 concept each</span></div>
+      <div class="stat"><b>10</b><span>weeks, ~8–12 h each</span></div>
+      <div class="stat"><b>40</b><span>lessons, 1 concept each</span></div>
       <div class="stat"><b>Go + Memgraph</b><span>mini-DDE server</span></div>
       <div class="stat"><b>Next.js</b><span>mini-PCC + capstone UI</span></div>
       <div class="stat"><b>mini-C2C</b><span>capstone: booking → billing → collections</span></div>
     </div>
   </div>
 
-  <h3 class="sech">What you will have built by week 8</h3>
+  <h3 class="sech">What you will have built by week 10</h3>
   <div class="diagram">
     <div class="flowrow">
       <div class="fbox"><b>Claude Code</b><span>agents + skills + hooks</span></div>
@@ -312,13 +315,13 @@
     <li><b>Tasks</b> — step-by-step instructions with the code that matters written out in full.</li>
     <li><b>Checkpoint</b> <span class="chip ok">✓</span> — a concrete "you are done when…" you can verify mechanically, in the spirit of the system you're cloning: <em>verify, don't assume</em>.</li>
   </ul>
-  <p>Lessons build strictly on each other — the state machine you write in week 2 guards the statuses week 6's gates protect; the wave planner from week 5 orders the services you build in week 8. Don't skip.</p>
+  <p>Lessons build strictly on each other — the state machine you write in week 2 guards the statuses week 6's gates protect; the wave planner from week 5 orders the services you build in week 10. Don't skip.</p>
 
   <div class="callout note">
     <h4>Prerequisites &amp; setup (do this before week 1)</h4>
     <ul>
       <li>Comfortable-ish with Go basics and one JS framework; everything else is taught in place.</li>
-      <li>Install: Go ≥ 1.22, Node ≥ 20, git, Docker (from week 1 — Memgraph runs in a container), SQLite CLI (<code>sqlite3</code>, for the week-8 capstone services' own data), Claude Code (week 4 on).</li>
+      <li>Install: Go ≥ 1.22, Node ≥ 20, git, Docker (from week 1 — Memgraph runs in a container), SQLite CLI (<code>sqlite3</code>, for the week-10 capstone services' own data), Claude Code (week 4 on).</li>
       <li>Clone access to the real repo (<code>C2C_Ono_AIR310054</code>) for the "in the real system" cross-reads — read-only is fine.</li>
       <li>Create your workspace: <code>mkdir mini-dde &amp;&amp; cd mini-dde &amp;&amp; git init</code>. All paths in the course are relative to this root.</li>
     </ul>
@@ -328,14 +331,14 @@
   <p>The real system moves every piece of work through a numbered lifecycle. The course builds the machinery in dependency order, then the capstone walks one real feature through all of it:</p>
   <div class="diagram">
     <div class="pipe">
-      <div class="pstage"><span class="pn">pre-0</span><b>Ideate → Promote</b><span>CIR → challenge → xDR</span><span class="pw">W3 · W7</span></div>
-      <div class="pstage"><span class="pn">0</span><b>Strategic design</b><span>human + AI brief</span><span class="pw">W8</span></div>
-      <div class="pstage"><span class="pn">1–2</span><b>Autonomous design</b><span>SDD + review + converge</span><span class="pw">W8</span></div>
+      <div class="pstage"><span class="pn">pre-0</span><b>Ideate → Promote</b><span>CIR → challenge → xDR</span><span class="pw">W3 · W7 · W8</span></div>
+      <div class="pstage"><span class="pn">0</span><b>Strategic design</b><span>human + AI brief</span><span class="pw">W8 · W10</span></div>
+      <div class="pstage"><span class="pn">1–2</span><b>Autonomous design</b><span>SDD + review + converge</span><span class="pw">W8 · W10</span></div>
       <div class="pstage"><span class="pn">3</span><b>Task generation</b><span>work packages + waves</span><span class="pw">W5</span></div>
-      <div class="pstage"><span class="pn">4</span><b>Foundation</b><span>shared types, mocks, infra</span><span class="pw">W8</span></div>
-      <div class="pstage"><span class="pn">5</span><b>Autonomous build</b><span>build to contracts</span><span class="pw">W8</span></div>
-      <div class="pstage"><span class="pn">6</span><b>Integration verify</b><span>mock → real, wave order</span><span class="pw">W8</span></div>
-      <div class="pstage"><span class="pn">7</span><b>Acceptance</b><span>gates, DoD, verdicts</span><span class="pw">W6 · W8</span></div>
+      <div class="pstage"><span class="pn">4</span><b>Foundation</b><span>shared types, mocks, infra</span><span class="pw">W9 · W10</span></div>
+      <div class="pstage"><span class="pn">5</span><b>Autonomous build</b><span>build to contracts</span><span class="pw">W9 · W10</span></div>
+      <div class="pstage"><span class="pn">6</span><b>Integration verify</b><span>mock → real, wave order</span><span class="pw">W9 · W10</span></div>
+      <div class="pstage"><span class="pn">7</span><b>Acceptance</b><span>gates, DoD, verdicts</span><span class="pw">W6 · W9 · W10</span></div>
     </div>
     <p class="dcap">stages per CLAUDE.md § "Process — Nexus DDE 8-stage lifecycle" · the W-tags show where this course builds each piece</p>
   </div>
@@ -349,7 +352,9 @@
     <a class="wkcard" href="#week5"><span class="wknum">WEEK 5</span><b>Contracts &amp; waves</b><p>Contracts carry schemas; PRODUCES/CONSUMES choreography <em>is</em> the dependency model; Kahn's algorithm turns it into parallel build waves; context packages feed builders.</p><span class="wkmeta">JSON Schema · validate_schema · compute_wave_plan</span></a>
     <a class="wkcard" href="#week6"><span class="wknum">WEEK 6</span><b>Gates &amp; enforcement</b><p>Named exit criteria with machine-checkable evidence, reviewer verdicts, the Definition of Done — and Claude Code hooks that make skipping impossible.</p><span class="wkmeta">check_gate · gate evidence · DoD · exit-2 hooks</span></a>
     <a class="wkcard" href="#week7"><span class="wknum">WEEK 7</span><b>Pipeline &amp; mini-PCC</b><p>Skills encode process as executable documents; agent sessions claim work atomically; a Next.js Process Control Center renders it all — the server derives, the UI projects.</p><span class="wkmeta">SKILL.md · claim_work · /api/pipeline · journey map</span></a>
-    <a class="wkcard" href="#week8"><span class="wknum">WEEK 8</span><b>Capstone: mini-C2C</b><p>Use your mini-DDE end to end: ideate → promote → contracts → waves → build three event-driven Go services and a C2C-shell Next.js frontend → gates → COMPLETE.</p><span class="wkmeta">booking → billing → collections · outbox · lifecycle spine</span></a>
+    <a class="wkcard" href="#week8"><span class="wknum">WEEK 8</span><b>Skills I: idea → design</b><p>The skill estate, first half: the full ideation funnel (ideate → challenge → promote → scope-review → backlog), the design chain (strategic → autonomous → review), and the findings machinery that keeps a live graph honest.</p><span class="wkmeta">bld-ideate → bld-promote · SDD chain · dedup/route/dispose</span></a>
+    <a class="wkcard" href="#week9"><span class="wknum">WEEK 9</span><b>Skills II: build → operate</b><p>Second half: the build phase machine, the test estate, ship-and-accept (integration verify → acceptance), and the fleet-operations skills — plus the full 57-skill atlas, mapped.</p><span class="wkmeta">autonomous-build A–G · test estate · orchestrate · atlas</span></a>
+    <a class="wkcard" href="#week10"><span class="wknum">WEEK 10</span><b>Capstone: mini-C2C</b><p>Use your mini-DDE end to end: ideate → promote → contracts → waves → build three event-driven Go services and a C2C-shell Next.js frontend → gates → COMPLETE.</p><span class="wkmeta">booking → billing → collections · outbox · lifecycle spine</span></a>
   </div>
 
   <h3 class="sech">Ground rules (borrowed from the system you're cloning)</h3>
@@ -422,7 +427,7 @@ bolt_uri: "bolt://localhost:7687"</code></pre></div></li>
 ├── .claude/{rules,hooks,skills}/  # agent context + enforcement (weeks 4–7)
 ├── .githooks/                 # pre-commit gate (week 6)
 ├── pcc/                       # Next.js mini-PCC (week 7)
-└── capstone/                  # mini-C2C (week 8)
+└── capstone/                  # mini-C2C (week 10)
 # graph data lives in the memgraph container's volume — not in the repo</code></pre></div></li>
         <li><p><strong>Commit.</strong> <code>git add -A &amp;&amp; git commit -m "week 1: workspace skeleton"</code>. One commit per lesson from here on — your history becomes the course log.</p></li>
       </ol>
@@ -1402,7 +1407,7 @@ func validateNoCallerStatus(n Node) error {
      "manual review only" is legal but flagged as weak. --&gt;</code></pre></div>
           <p>Copy it for <code>pdr</code>, <code>ddr</code>, <code>wow</code>, <code>cir</code> (change the meta tag name). The <b>Compliance section is the teeth</b>: every record must say how reality is kept in line with it.</p></li>
         <li><p><strong>Author your first real record.</strong> Use an ID from lesson 2.2's allocator (<code>allocate --type adr --title "Memgraph is the mini-DDE graph store"</code>), then write the record for a decision you already made: ADR "Memgraph is the mini-DDE graph store" — context (a teaching clone that should mirror the real system's Cypher/Bolt stack with near-zero ops), decision (Memgraph Community in one Docker container, <code>neo4j-go-driver/v5</code>, one label per node type, project scoping by property), consequences (Docker must be running; in-memory engine with snapshots in a named volume — the graph is treated as rebuildable from the idempotent seed), compliance ("manual for now; week 6 adds a lint"). Set status <code>Accepted</code> — you're the decision authority here.</p></li>
-        <li><p><strong>Author a PDR for the capstone product</strong> so week 8 has governing authority ready: <code>PDR "Mini contract-to-cash flow"</code> — the product does: book a contract, issue invoices, chase receivables to settlement; lifecycle spine <code>setup → active → in fulfilment → financially closing → closed</code> keyed by a fake SAP Contract Number. Status: <code>Accepted</code>.</p></li>
+        <li><p><strong>Author a PDR for the capstone product</strong> so week 10 has governing authority ready: <code>PDR "Mini contract-to-cash flow"</code> — the product does: book a contract, issue invoices, chase receivables to settlement; lifecycle spine <code>setup → active → in fulfilment → financially closing → closed</code> keyed by a fake SAP Contract Number. Status: <code>Accepted</code>.</p></li>
         <li><p><strong>Feel the disambiguators.</strong> For each of these, decide the record type before revealing the answer by reasoning from the definitions: (a) "events are ordered per contract by a hashed key" — <em>DDR (how data flows)</em>; (b) "no code merges without a passing gate" — <em>WoW (how the team operates)</em>; (c) "the frontend mirrors the C2C three-zone shell" — <em>ADR or PDR? It governs how the system is built for users → PDR if about behavior, ADR if about implementation structure. Write the sentence both ways and notice which record it wants.</em></p></li>
       </ol>
       <div class="callout check"><h4>Checkpoint</h4><p><code>docs/</code> holds a template per type + 2 Accepted records with allocator-minted IDs, each with a non-empty Compliance section.</p></div>
@@ -2098,7 +2103,7 @@ func (s *Store) ValidateEventPayload(ctx context.Context, id string, payload []b
 $M link --src booking-core     --dst evt-contract-booked --type PRODUCES
 $M link --src billing-core     --dst evt-contract-booked --type CONSUMES
 $M link --src collections-core --dst evt-contract-booked --type CONSUMES</code></pre></div>
-          <p>Create the remaining capstone event <em>nodes</em> now — <code>evt-booking-completed</code>, <code>evt-invoice-issued</code>, <code>evt-receivable-settled</code>, <code>evt-contract-closed</code> (schemas can start minimal; week 8 tightens all five) — but wire <b>no further PRODUCES/CONSUMES edges yet</b>. The rest of the choreography goes in during 5.3, where it teaches the planner's sharpest lesson.</p></li>
+          <p>Create the remaining capstone event <em>nodes</em> now — <code>evt-booking-completed</code>, <code>evt-invoice-issued</code>, <code>evt-receivable-settled</code>, <code>evt-contract-closed</code> (schemas can start minimal; week 10 tightens all five) — but wire <b>no further PRODUCES/CONSUMES edges yet</b>. The rest of the choreography goes in during 5.3, where it teaches the planner's sharpest lesson.</p></li>
         <li><p><strong>Give each Responsibility work packages</strong> with a <code>sequence</code> prop — booking: <code>wp-book-api</code> (1), <code>wp-book-events</code> (2); billing: <code>wp-bill-consume</code> (1), <code>wp-bill-issue</code> (2); collections: <code>wp-col-consume</code> (1), <code>wp-col-settle</code> (2). Each <code>BELONGS_TO</code> its Responsibility.</p></li>
         <li><p><strong>Derive choreography dependencies in code</strong> — the heart of this lesson:</p>
           <div class="code" data-file><span class="fname">server/internal/graph/choreography.go</span><pre><code>package graph
@@ -2341,10 +2346,10 @@ func (s *Store) ComputeWavePlan(ctx context.Context) (WavePlan, error) {
 	return plan, nil
 }</code></pre></div></li>
         <li><p><strong>Expose it as the <code>compute_wave_plan</code> tool</strong> and run it on the capstone graph. Expected shape: wave 1 = <code>wp-book-api</code>; wave 2 = <code>wp-book-events</code>; wave 3 = the two consume-WPs <em>in parallel</em>; wave 4 = <code>wp-bill-issue</code>, <code>wp-col-settle</code>. Draw it on paper first, then compare.</p></li>
-        <li><p><strong>Hit a real cycle — then understand it.</strong> Wire the rest of the runtime choreography exactly as mini-C2C will run it: billing <code>PRODUCES evt-invoice-issued</code>, consumed by collections <em>and</em> booking; collections <code>PRODUCES evt-receivable-settled</code>, consumed by billing <em>and</em> booking. Re-run the planner: <code>dependency_cycle</code> naming <b>all six WPs</b> — and (assert!) no <code>wave</code> props were written. Nothing is wrong with the runtime design: services legitimately consume each other's events in a loop (issue → settle → mark paid). What cycled is the <em>coarsening</em>: <code>ChoreographyDeps</code> turns "consumes at runtime" into "builds after", and first-WP-on-last-WP cannot tell a feedback loop from a build dependency. Under contracts-as-truth (5.1) no consumer ever needs a <em>built</em> producer — it builds against the schema, with mocks — so keep choreography-derived build order to the one signal every service genuinely starts from: <code>evt-contract-booked</code>. Delete the four CONSUMES edges you just added (keep both PRODUCES — ownership is true and acyclic); the plan returns. The full consumption picture re-enters the graph in 8.4, when integration reconciles edges to what the system actually does — after wave planning has served its purpose. (The real planner lives with the same coarsening plus an escape hatch — a sequential edge that would close a cycle is skipped; re-read this lesson's callout with new eyes.)</p></li>
+        <li><p><strong>Hit a real cycle — then understand it.</strong> Wire the rest of the runtime choreography exactly as mini-C2C will run it: billing <code>PRODUCES evt-invoice-issued</code>, consumed by collections <em>and</em> booking; collections <code>PRODUCES evt-receivable-settled</code>, consumed by billing <em>and</em> booking. Re-run the planner: <code>dependency_cycle</code> naming <b>all six WPs</b> — and (assert!) no <code>wave</code> props were written. Nothing is wrong with the runtime design: services legitimately consume each other's events in a loop (issue → settle → mark paid). What cycled is the <em>coarsening</em>: <code>ChoreographyDeps</code> turns "consumes at runtime" into "builds after", and first-WP-on-last-WP cannot tell a feedback loop from a build dependency. Under contracts-as-truth (5.1) no consumer ever needs a <em>built</em> producer — it builds against the schema, with mocks — so keep choreography-derived build order to the one signal every service genuinely starts from: <code>evt-contract-booked</code>. Delete the four CONSUMES edges you just added (keep both PRODUCES — ownership is true and acyclic); the plan returns. The full consumption picture re-enters the graph in 10.4, when integration reconciles edges to what the system actually does — after wave planning has served its purpose. (The real planner lives with the same coarsening plus an escape hatch — a sequential edge that would close a cycle is skipped; re-read this lesson's callout with new eyes.)</p></li>
         <li><p><strong>Determinism test:</strong> run the planner 5 times; byte-identical JSON every time. If not, you missed a <code>sort</code>.</p></li>
       </ol>
-      <div class="callout check"><h4>Checkpoint</h4><p>The capstone plan matches your drawing; max parallelism is 2 (the week-8 promise: billing and collections build simultaneously); cycles refuse loudly and persist nothing; output is deterministic.</p></div>
+      <div class="callout check"><h4>Checkpoint</h4><p>The capstone plan matches your drawing; max parallelism is 2 (the week-10 promise: billing and collections build simultaneously); cycles refuse loudly and persist nothing; output is deterministic.</p></div>
     </div>
   </details>
 
@@ -2425,7 +2430,7 @@ func (s *Store) AssembleContext(ctx context.Context, respID string) (ContextPack
 	}
 	return pkg, nil
 }</code></pre></div></li>
-        <li><p><strong>Give the capstone Responsibilities specifications to carry.</strong> Write a one-page spec per service at <code>docs/sdd/&lt;resp&gt;-sdd.md</code> (what it owns, its tables, its endpoints, which events in/out — crib the shapes from the week-8 overview). Create a <code>Document</code> node per spec with a <code>path</code> prop and a <code>DOCUMENTED_BY</code> edge from the Responsibility.</p></li>
+        <li><p><strong>Give the capstone Responsibilities specifications to carry.</strong> Write a one-page spec per service at <code>docs/sdd/&lt;resp&gt;-sdd.md</code> (what it owns, its tables, its endpoints, which events in/out — crib the shapes from the week-10 overview). Create a <code>Document</code> node per spec with a <code>path</code> prop and a <code>DOCUMENTED_BY</code> edge from the Responsibility.</p></li>
         <li><p><strong>Expose <code>query_context_package</code></strong> as a tool. Then run it for <code>billing-core</code> in the inspector and read the result <em>as if you were the builder</em>: could you implement mini-billing from this payload alone, without opening any other file? If no — the spec is too thin; fix the spec, not the tool.</p></li>
         <li><p><strong>Add the pre-dispatch validation trigger.</strong> A second tool, <code>compute_context_packages</code>, that loops every Responsibility, attempts assembly, and reports <code>{ok: [...], failed: [{id, reason}]}</code> — storing nothing. It answers "can every builder be handed complete context?" <em>before</em> anyone dispatches. Run it; fix whatever it flags (a Responsibility with no spec Document is the classic).</p></li>
       </ol>
@@ -2901,7 +2906,7 @@ node in graph, status exploring — verify all three by reading them back.</code
   <details class="lesson" data-week="week7" id="l72">
     <summary><span class="lnum">7.2</span><span class="ltitle">Agent sessions &amp; claiming work</span><span class="lconcept">claim_work</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l72" aria-label="Mark lesson 7.2 done"></label><span class="chev">▶</span></summary>
     <div class="lbody">
-      <p class="lead">When multiple builders run in parallel (week 8's waves!), "who is working on what" must be graph state, not vibes. An <b>AgentSession</b> node with a <code>WORKS_ON</code> edge is minted per dispatch; <code>claim_work</code> is an <b>atomic compare-and-set</b> so two builders can never claim the same work package; <code>complete_agent</code> closes the session and refuses a "completed" status without a real summary — the server-side backstop against agents declaring victory on faith.</p>
+      <p class="lead">When multiple builders run in parallel (week 10's waves!), "who is working on what" must be graph state, not vibes. An <b>AgentSession</b> node with a <code>WORKS_ON</code> edge is minted per dispatch; <code>claim_work</code> is an <b>atomic compare-and-set</b> so two builders can never claim the same work package; <code>complete_agent</code> closes the session and refuses a "completed" status without a real summary — the server-side backstop against agents declaring victory on faith.</p>
       <div class="callout real">
         <h4>In the real system</h4>
         <p><code>assign_agent</code> mints the session + WORKS_ON edges; <code>claim_work</code> delegates to <code>store.ClaimWork</code> — claim + session creation in one transaction; <code>complete_agent</code> validates the AgentSession transition map <em>and requires a <code>[SESSION_AUDIT_RUN:</code> marker in the result summary</em> before accepting "completed" — a server-side check backing a client-side hook. Completion triggers the responsibility-status rollup recompute.</p>
@@ -3204,7 +3209,267 @@ function Card({ node }: { node: Node }) {
 <!-- ============================================================ WEEK 8 -->
 <section class="view" id="week8">
   <header class="weekhead">
-    <p class="eyebrow">Week 8 · Part IV — prove it</p>
+    <p class="eyebrow">Week 8 · Part IV — the skill estate</p>
+    <h2>Skills I: idea → design</h2>
+    <p class="wintro">Week 7 taught the skill <em>form</em> — process as an executable document. Weeks 8–9 teach the skill <b>estate</b>: the ~57 <code>bld-*</code> skills that ARE the Nexus pipeline in daily operation. This week is the front half — the intake funnel, the challenge/promote spine, the design chain, and the findings machinery — and each lesson upgrades your own mini skills with the load-bearing mechanism the real skill exists to enforce. You are not cloning 57 files; you are extracting the dozen mechanisms they share.</p>
+    <ul class="wgoals">
+      <li><b>Concept:</b> reserve → redeem, verify-or-mark, bounded converge, one verb per skill</li>
+      <li><b>Build:</b> <code>/mini-backlog</code>, <code>/mini-challenge</code>, <code>/mini-scope-review</code>, <code>/mini-dedup</code>, <code>/mini-route</code></li>
+      <li><b>Upgrade:</b> mini-ideate and mini-promote gain the real skills' failure-hardening</li>
+      <li><b>Doctrine:</b> capture without fabrication; never trust an unverified graph write</li>
+    </ul>
+    <div class="wtools"><button data-expand="week8">Expand all lessons</button><button data-collapse="week8">Collapse all</button></div>
+  </header>
+
+  <details class="lesson" data-week="week8" id="l81">
+    <summary><span class="lnum">8.1</span><span class="ltitle">The intake funnel: capture without fabrication</span><span class="lconcept">reserve → redeem</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l81" aria-label="Mark lesson 8.1 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">Ideas enter the pipeline through two doors. <code>bld-ideate</code> is the slow door: a six-forcing-question interview that refuses to mint a CIR until at least three have real answers. <code>bld-backlog</code> is the fast door: batch-capture at meeting speed, one confirmation for the whole batch — but each stub still clears the <em>same</em> server-side content gate, with every analytical section honestly stamped "Captured stub" instead of filled with invented analysis. Both doors share one id mechanism worth upgrading your allocator to: <b>reserve → redeem</b>. Reserve mints the canonical id with a TTL; redeem atomically creates the node while enforcing the content gate. The server owns the id algorithm — in the reserve → redeem path, a caller supplying its own id is rejected outright.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>bld-ideate</code> (<code>SKILL.md:101-107</code>): NEVER create a CIR without ≥3 of the 6 forcing questions answered; <code>reserve_decision_ids</code> mints the id (server-derived slug + Crockford suffix, 7-day TTL) and <code>redeem_decision_id</code> enforces ≥500 chars + the literal <code>&lt;cir-quick-reference&gt;</code> block + every required <code>##</code> section — passing <code>id</code> in properties fails with <code>caller_supplied_id_forbidden</code>. <code>bld-backlog</code>: at most ONE confirmation per batch, idempotent via a (session, nonce) pair, each stub tagged <code>enrichment_status: "pending"</code>, and one failed item renders as a ✗ line without killing the batch. <code>bld-narrative-author</code> guards its Draft→Agreed flip with a <em>server-side</em> 4-check gate the skill may pre-flight but never simulate.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Split your allocator into reserve → redeem.</strong> <code>ReserveDecisionID(ctx, docType, title)</code> keeps the week-2 MERGE + ON-CREATE-marker statement but now creates a <code>Reservation</code> node (<code>{id, project_id, expires_at}</code>, TTL 7 days) instead of the Decision itself. <code>RedeemDecisionID(ctx, id, content)</code> checks the reservation exists and is unexpired, runs the content gate, creates the Decision node, and deletes the reservation — one transaction of intent. The week-7 initial-status rule moves with the create: redeem births a CIR at <code>exploring</code>, everything else at <code>Proposed</code>. Expose both as MCP tools; retire the single-step <code>allocate_decision_id</code> from mini-ideate's Phase 3 in favor of the pair (its step 4 read-back check stays — it now proves the <em>redeem</em> carried the status).</p></li>
+        <li><p><strong>Write the content gate.</strong> Redeem refuses when: content &lt; 500 chars (<code>content_too_thin</code>), a required section is missing (<code>missing_section: ## Riskiest assumption</code>), or the caller passed an <code>id</code> inside the props payload (<code>caller_supplied_id_forbidden</code> — the reservation id is the only id). Structural completeness is a floor the server owns, not a convention the skill remembers.</p></li>
+        <li><p><strong>Build <code>/mini-backlog</code>.</strong> Feed it five one-line ideas. It must: parse them into discrete items, draft an honest-restatement stub per item (every analytical section literally reading "Captured stub — not yet analyzed"), ask ONE AskUserQuestion for the whole batch, reserve all five ids in a single call carrying an idempotency nonce, then redeem each — reporting a per-line ✓/✗ table. One deliberately-thin stub must ✗ without aborting its siblings.</p></li>
+        <li><p><strong>Prove the idempotency.</strong> Re-run the same batch with the same nonce: zero duplicate nodes. Then let a reservation expire (set a 5-second TTL for the test) and prove redeem fails cleanly with <code>reservation_expired</code>.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>Redeem rejects thin content, missing sections, caller-supplied ids, and expired reservations — each with its exact snake_case code; <code>/mini-backlog</code> captures 5 ideas on one confirmation, survives a re-run with zero duplicates, and renders ✗ for the sabotaged stub.</p></div>
+      <div class="callout war"><h4>Why it exists</h4><p>The stub discipline is the anti-fabrication doctrine applied to capture: a batch tool that "helpfully" fills in analysis invents evidence nobody gave it, and the graph can no longer tell a worked CIR from a guess. The real system's answer is structural: the same content gate for both doors, with honesty markers instead of padding — and <code>enrichment_status</code> so the backlog view never confuses the two.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week8" id="l82">
+    <summary><span class="lnum">8.2</span><span class="ltitle">Challenge &amp; promote, hardened</span><span class="lconcept">verify-or-mark</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l82" aria-label="Mark lesson 8.2 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">Between capture and authority sit three gatekeeper skills. <code>bld-challenge</code> stress-tests a CIR adversarially — and its reviewer is deliberately <em>isolated</em>: a subagent that receives only the CIR file path, no conversation history, so it cannot inherit your enthusiasm. <code>bld-scope-review</code> checks a promoted decision against the existing estate before any design begins. And <code>bld-promote</code> carries the mechanism this lesson is named for: <b>verify-or-mark</b> — a load-bearing graph write is never trusted on return; it is read back by the id the call returned, and if the read-back fails, a durable marker is written, the status flip is HELD, and the skill reports incomplete so a re-run is clean.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>bld-challenge</code>: status flips to <code>challenged</code> at Step 0 before anything else; never validate without ≥2 implementation alternatives (one minimal-viable, one ideal); the isolated reviewer scores 5 dimensions, fixes loop max 3 times, and unresolved issues persist as a "Reviewer Concerns" section. <code>bld-promote</code> (<code>verify-persisted.sh</code>): read-back on a 0/0.25/0.5/1s backoff; on failure a marker JSON + best-effort Finding + <b>PROMOTION INCOMPLETE</b>, CIR flip held. Its spawn write-back refuses to guess on ambiguity — guessing by resemblance is what got PRs 39254/39326 abandoned. <code>bld-scope-review</code> + <code>bld-strategic-design</code> both mandate a TWO-pass prior-work search (semantic AND keyword) because the semantic index fails silent (<code>Finding-large-synced-decision-YBYY</code>); "none found" is only legal with the queries quoted verbatim. <code>bld-author-decision</code>'s 7-box conflict gate exists because an ADR once went authored-to-accepted in 8 minutes over live authority nobody grepped for (<code>Finding-adr-c2c-caching-WRZ0</code>).</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Write <code>/mini-challenge</code></strong> (<code>.claude/skills/mini-challenge/SKILL.md</code>). Phase 1: flip the CIR <code>exploring → challenged</code> immediately. Phase 2: require ≥2 implementation alternatives in the CIR — one labeled "minimal viable", one "ideal architecture"; STOP if the author (you) can't produce two. Phase 3: dispatch a subagent whose entire input is the CIR <em>file path</em> — no chat context — scoring completeness, consistency, clarity, scope, feasibility 1–10 with one concrete issue each. Phase 4: fix and re-dispatch at most 3 times; whatever survives goes into a "Reviewer Concerns" section verbatim. Phase 5: verdict — <code>update_status</code> to <code>validated</code>, <code>parked</code>, or <code>rejected</code>, with the scores in the reason.</p></li>
+        <li><p><strong>Add verify-or-mark to mini-promote.</strong> After <code>register_decision</code> and after <code>update_status</code>: read the node back by the returned id on a 0 / 0.25 / 0.5 / 1s schedule. On a verified miss: write <code>.minidde/promote-queue/&lt;id&gt;.json</code> (what was attempted, when, observed error), print <b>PROMOTION INCOMPLETE</b>, and leave the CIR un-flipped. Then prove the recovery: with the marker present, re-run mini-promote and verify it completes cleanly with zero duplicate nodes — the MERGE from week 2 is what makes the retry safe.</p></li>
+        <li><p><strong>Write <code>/mini-scope-review</code>.</strong> Before a promoted decision may get a design brief: run BOTH <code>semantic-search-like</code> lookup (your <code>_search</code> Cypher from week 4) AND a keyword grep over <code>docs/</code>. The output must either cite the prior work it found or carry the literal line <code>Prior work: none found (queries: "...", "...")</code> — refuse to print "none found" without the queries echoed. Verdict is binary: <code>CLEAR</code> or <code>BLOCKED — resolve N issues first</code>.</p></li>
+        <li><p><strong>Gate direct authoring.</strong> Put a conflict checklist in front of <code>register_decision</code> for the no-CIR path: (a) grep <code>docs/</code> for 3 tokens from the draft title, (b) query the graph for same-type decisions with overlapping <code>_search</code> hits, (c) classify every hit OVERLAP / RELATED / UNRELATED. The tool refuses registration while any box is unchecked — a partial gate means stop, never proceed.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>A CIR cannot reach <code>validated</code> without two alternatives and an isolated review; a simulated graph outage during mini-promote leaves a marker + an unflipped CIR, and the re-run completes without duplicates; scope-review refuses "none found" without quoted queries.</p></div>
+      <div class="callout war"><h4>Why it exists</h4><p>Every mechanism here is a scar. The isolated reviewer exists because a reviewer who shares your context shares your blind spots. Verify-or-mark exists because hosted writes failed silently mid-skill and the drift surfaced days later. The two-pass search exists because a null semantic result is indistinguishable from "no results". Distrust, mechanized.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week8" id="l83">
+    <summary><span class="lnum">8.3</span><span class="ltitle">The design chain: one hand writes, bounded loops converge</span><span class="lconcept">converge ledger</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l83" aria-label="Mark lesson 8.3 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">The design chain — <code>bld-strategic-design</code> → <code>bld-autonomous-design</code> → <code>bld-design-review</code>, with <code>bld-design-update</code> for governance drift — is one long instance of a single pattern: <b>bounded evaluator–optimizer convergence</b>. Exactly one authoring hand writes the document; independent reviewers fan out in parallel; all findings batch into ONE re-author dispatch per round; and the loop is <em>hard</em>-bounded — 3 rounds max, with the budget persisted in an on-disk ledger so it survives crashes and context clears. Every exit past the budget is an explicit escalation to the human, never a silent extra round.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>bld-autonomous-design</code>'s converge ledger: a <code>## Converge ledger</code> table anchored by a whole-line <code>&lt;!-- converge-ledger:v1 --&gt;</code> marker (conformance: <code>grep -cx == 1</code>), append-only rows with SDD bytes before/after; a growth tripwire stops the loop when any round after the first grows the SDD by &gt;50%, or at 500,000 bytes total — the byte ceiling guards every round, including the first. The war story: the first live v2 cycle died on unbounded converge — 81KB→136KB re-ingested across every lens until the token ceiling killed the run (<code>Finding-first-v2-design-D8EE</code>). <code>bld-design-review</code>'s two structural gates: <b>zero-open-items</b> (the review cannot exit with any finding OPEN — no "accepted risk", no parking lot) and structurally-enforced deferrals (agents cannot create ExternalDependency nodes, so they cannot manufacture deferral reasons). Verdict enums are validated per-lens server-side — the strategic lens speaks ALIGNED / MINOR_RISK / SIGNIFICANT_REGRET_RISK, and "a strategic ACCEPTABLE is rejected". The scope-class two-hand split: the Designer <em>authors</em> the classification but holds no <code>update_node</code>; the session <em>transcribes</em> it verbatim but exercises no judgment — the hand that reads the gate cannot write the property.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Write <code>/mini-brief</code>.</strong> It queries your graph for the Accepted decisions governing the target Responsibility, then fills a dependency table where every upstream row carries a status (<code>AVAILABLE / IN-DESIGN / NOT-STARTED</code>) and a fallback-when-unavailable behavior. It refuses to register the brief Document while any cell is blank or "TBD", and creates <code>GOVERNED_BY</code> edges to each cited decision.</p></li>
+        <li><p><strong>Add the converge ledger to your design flow.</strong> A markdown file carrying the whole-line anchor <code>&lt;!-- converge-ledger:v1 --&gt;</code>; each review round appends a row with <code>wc -c</code> before/after. At startup, read <code>rounds_used</code> back from the ledger — refuse a 4th round, and hard-stop with an operator-facing message when a round grows the document by more than 50%. Kill the session between rounds and prove the budget survives.</p></li>
+        <li><p><strong>Build the zero-open-items gate server-side.</strong> A <code>check_gate(resp, design_review_exit)</code> that queries for Finding nodes with status OPEN attached to the Responsibility and blocks while any exist. No DEFERRED escape: your week-3 <code>CheckDeferral</code> (ExternalDependency + BLOCKS) is the only legal deferral, and you — the DA — are the only one who creates those nodes.</p></li>
+        <li><p><strong>Re-verify your 6.3 per-lens verdict scales</strong> — the design chain leans on them now: a strategic "ACCEPTABLE" must be rejected with a typed error naming <code>ALIGNED | MINOR_RISK | SIGNIFICANT_REGRET_RISK</code>, while skeptic/consistency/craftsman keep <code>ACCEPTABLE | NEEDS_WORK | INADEQUATE</code>. If your week-6 build validated the value sets but not per-lens, tighten it here. The lenses ask different questions; letting them share a vocabulary flattens the difference.</p></li>
+        <li><p><strong>Write the governance-delta script</strong> (the heart of <code>bld-design-update</code>): given the git ref of the last design approval, list decision records changed since it, query the Responsibility's <code>GOVERNED_BY</code> edges, and print a three-bucket report — <em>changed-and-governed</em>, <em>changed-but-no-edge</em> (missing governance), <em>edge-to-superseded</em> (stale governance). Empty delta → print "cosmetic only — no re-authoring required" and stop.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>The ledger survives a mid-loop kill and refuses round 4; a &gt;50% growth round stops with a message, not another round; <code>record_verdict</code> rejects a strategic ACCEPTABLE; the delta script buckets a superseded-governor correctly; and no design exits review with an OPEN finding.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week8" id="l84">
+    <summary><span class="lnum">8.4</span><span class="ltitle">The findings machinery: one verb per skill</span><span class="lconcept">verb discipline</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l84" aria-label="Mark lesson 8.4 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">Eight skills govern what happens to a Finding after registration — intake, hygiene, routing, disposal, and the three <code>responsibility-from-*</code> exit ramps that turn findings and decisions back into buildable work. Their shared architecture is the sharpest discipline in the estate: <b>each skill is permitted exactly one Finding-mutating verb and hard-prohibits the others</b>. Dedup may only <code>create_edge</code> — never resolve. Route may only <code>update_status(ROUTED)</code> — never resolve. Dispose may only <code>resolve_finding</code> — never reject. Harvest may only <code>register_finding</code> — never confirm. A skill that can only do one thing to a Finding can be re-run, audited, and trusted; a skill that can do everything can silently do anything.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>bld-dedup-findings</code>: TF-IDF cosine over OPEN findings — ≥0.85 auto-links <code>DUPLICATE_OF</code> (after checking BOTH edge directions), 0.45–0.85 queues for DA adjudication, and artifact overlap NEVER ranks: same-files-different-bug is labeled RELATED_DISTINCT, encoding the adjudicated failure of a predecessor that ranked by file overlap and got it wrong. <code>bld-route-findings</code>: "detector proposes, human disposes" — <code>routed_by</code> is the confirming human, never "system"; buckets must pre-exist (<code>^[a-z-]+-findings-backlog-\d{4}$</code>); the sent-ledger is the delivery idempotency. <code>bld-findings-disposition</code> is its <b>earned-autonomy</b> twin: the per-finding confirms collapse into autonomous phases ONLY after ≥2 consecutive manual passes with zero DA overrides — the checks stay, only the latency goes. <code>bld-responsibility-from-finding</code> bundles the <code>DERIVED_FROM</code> lineage edge into <code>create_node</code>, and one acceptance criterion is always mandatory: "Finding &lt;id&gt; can transition to RESOLVED upon completion". <code>bld-transcript-harvest</code> dedups by searching for exact citation substrings in the finding description — change one character of the template and every future run re-raises every Finding.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Write the verb table first.</strong> One row per mini finding skill you're about to build: skill → its one permitted write verb → the verbs it must refuse. Put it in a mini-WoW record. This table is the lesson; the code below just enforces it.</p></li>
+        <li><p><strong>Build <code>/mini-dedup</code>.</strong> Compute TF-IDF cosine over all OPEN findings (lowercase, strip stopwords, inverted index — ~40 lines of Go). Pairs ≥0.85: create <code>DUPLICATE_OF</code> after querying both edge directions (canonicalize the pair as (min id, max id)); add <code>EdgeDuplicateOf = "DUPLICATE_OF"</code> to week 1's edge constants + <code>ValidEdgeTypes</code> first, or <code>CreateEdge</code> will rightly refuse it. Pairs 0.45–0.85: print a review table, mutate nothing. Run it twice; assert zero new edges the second time. The skill never touches <code>resolve_finding</code> — by construction, a re-run can only skip.</p></li>
+        <li><p><strong>Add <code>ROUTED</code> and build <code>/mini-route</code>.</strong> Extend the Finding transition map with <code>OPEN → ROUTED</code> — and give it a way out: <code>ROUTED → {RESOLVED}</code>, with <code>ResolveFinding</code> relaxed to accept OPEN <em>or</em> ROUTED. Routing parks a finding in a bucket; it does not end its lifecycle — week 6's <code>all_findings_terminal</code> still counts ROUTED as open, so anything routed against a capstone Responsibility must be resolved before the week-10 gates. Add <code>Bucket</code> to <code>ValidNodeTypes</code> and pre-create one bucket node per capstone domain (<code>booking-findings-backlog-2026</code>…). The skill scans read-only, proposes routes, asks one confirmation per finding, then <code>update_status(ROUTED)</code> + <code>DERIVED_FROM</code> edge to the bucket — and when a proposed bucket doesn't exist, it records the residue and continues; it never creates buckets.</p></li>
+        <li><p><strong>Build <code>/mini-resp-from-finding</code>.</strong> Load a Finding; refuse if RESOLVED (offer "reopen first"); interview for purpose/scope with a "fold into parent instead" escape that stops the skill; create the Responsibility with the <code>DERIVED_FROM</code> edge bundled into <code>CreateNodeWithEdges</code>; force the mandatory acceptance criterion naming the Finding; then read the node back and fail unless the purpose is ≥100 chars and the edge exists — write-then-verify, never write-and-trust.</p></li>
+        <li><p><strong>Feel earned autonomy.</strong> Run <code>/mini-route</code> manually twice, overriding nothing. Then — and only then — write its fast-forward twin: same scan, same route test, a small <code>route_exit</code> gate declared first (<code>scan_complete</code>, <code>routes_applied</code>, <code>delivery_complete</code> — all evidence-bearing, or <code>SubmitGateEvidence</code> rightly refuses them), evidence submitted per phase, exactly ONE confirmation left (before "delivery"). The safety checks survive; the latency dies. If you had overridden even once, the collapse would not be earned yet.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint — end of the funnel half</h4><p>The verb table exists as a record; mini-dedup is idempotent and link-only; mini-route refuses to invent buckets and stamps you (not "system") as router; resp-from-finding's read-back gate fails on a thin purpose; and the fast-forward variant keeps exactly one human gate.</p></div>
+      <div class="callout war"><h4>Why it exists</h4><p>Findings are the graph's memory of what's wrong. Skills that mutate memory get the strictest discipline in the estate — because a "helpful" tool that resolves findings while deduplicating them, or routes while disposing, destroys the audit trail exactly where it matters most. One verb per skill is how the machinery stays legible at 3,000 findings.</p></div>
+    </div>
+  </details>
+</section>
+<!-- ============================================================ WEEK 9 -->
+<section class="view" id="week9">
+  <header class="weekhead">
+    <p class="eyebrow">Week 9 · Part IV — the skill estate</p>
+    <h2>Skills II: build → operate</h2>
+    <p class="wintro">The back half of the estate: the build phase machine and its git discipline, the test estate where every verdict must land on the graph, the zero-tolerance ship-and-accept tail, and the fleet-operations skills that keep a graph-first pipeline honest <em>after</em> the build. The week ends with the atlas — all 57 pipeline skills in one table — so you can find the mechanism when you meet the situation.</p>
+    <ul class="wgoals">
+      <li><b>Concept:</b> verify-personally-then-gate; BLOCKED ≠ FAILED; durable state + gated seams</li>
+      <li><b>Build:</b> foundation gate, worktree merge check, BLOCKED_BY reconcile, Run/StageExecution FSM</li>
+      <li><b>Build:</b> disk→graph sync with R1–R5 conflict rules; four-eyes on approval</li>
+      <li><b>Map:</b> the full 57-skill atlas, each with its one load-bearing mechanism</li>
+    </ul>
+    <div class="wtools"><button data-expand="week9">Expand all lessons</button><button data-collapse="week9">Collapse all</button></div>
+  </header>
+
+  <details class="lesson" data-week="week9" id="l91">
+    <summary><span class="lnum">9.1</span><span class="ltitle">Foundation &amp; the build phase machine</span><span class="lconcept">phases 0→G</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l91" aria-label="Mark lesson 9.1 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead"><code>bld-foundation-build</code> lays the shared base and freezes it; <code>bld-autonomous-build</code> then drives each Responsibility through phases 0→G — and the team lead running it <b>never writes code itself and never believes a subagent</b>. Its core pattern is <em>verify-personally-then-gate</em>: the orchestrator runs the tests, the build, and the stub-scan with its own hands, submits the raw output as gate evidence, and a server-checked gate must pass before any phase advance. Around it, <code>bld-branch-discipline</code> makes 35+ parallel worktrees structurally conflict-free: one worktree = one branch, each Responsibility writes only its own directory, merges land in wave order behind a 7-condition gate.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p>The Foundation Exit gate: zero warnings, all tests green against mocks, every contract has a mock ("NEVER leave any contract without a corresponding mock"), four reviewer verdicts, zero stubs — then commit to main and <code>pkg/</code> becomes read-only for all of Stage 5. <code>bld-autonomous-build</code>'s thresholds are exact: &gt;20% test failures in a wave routes back to the Builder; fewer than 3 findings across 4 reviews of &gt;500 LOC triggers a superficial-review investigation; and Phase G walks the CHILD SESSION LEDGER to <code>complete_agent</code> every minted child — 155+98 zombie "active" sessions were once hand-swept because nobody closed them. <code>bld-branch-discipline</code>: NEVER <code>git checkout</code> inside a worktree (read other branches with <code>git show branch:path</code>); commits are <code>stage(responsibility): description</code>, one per phase. <code>bld-tech-stack-patterns</code> binds every pattern row to its governing ADR so a review finding is a citation, not an opinion.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Build the contract→mock generator + foundation gate.</strong> A generator that emits a Go struct and a mock publisher per Event/Contract node in your graph, and a <code>foundation_exit</code> gate that refuses the "commit to main" step unless every contract node has a matching mock file on disk and <code>go test ./...</code> passes. After it passes once: declare <code>capstone/pkg/</code> frozen — your week-10 build honors it.</p></li>
+        <li><p><strong>Wire the phase machine to your gates.</strong> You built <code>submit_gate_evidence</code>/<code>check_gate</code> in week 6; now demand three evidence classes on <code>build_exit</code>: <code>tests_pass</code>, <code>compile_clean</code>, <code>no_stubs_detected</code> — each submitted from output YOU generated by running the command, never from a subagent's summary. A missing class blocks the gate; a rejected <code>update_status</code> stops the run loudly.</p></li>
+        <li><p><strong>Adopt worktree discipline.</strong> Make your build flow create <code>git worktree add .worktrees/&lt;resp&gt; -b build/&lt;resp&gt;</code> per Responsibility, then add a pre-merge check that diffs the branch against main and fails if any changed path falls outside that Responsibility's directory (your <code>capstone/pkg/</code> equivalent included). Structural conflict-freedom beats merge-conflict resolution every time.</p></li>
+        <li><p><strong>Write your pattern table.</strong> Five rows for your stack (Go + Memgraph + MCP), each citing one of your own mini-ADRs — e.g. "ctx first arg, never stored (ADR-…)", "MERGE for every node write (ADR-memgraph-is-mini-…)". Plant one violation in a diff and have your review step emit a finding naming pattern + ADR.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p><code>foundation_exit</code> blocks while one contract lacks a mock; <code>build_exit</code> demands all three evidence classes; the pre-merge check catches a foreign-directory edit; the planted pattern violation comes back as a citation-carrying finding.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week9" id="l92">
+    <summary><span class="lnum">9.2</span><span class="ltitle">The test estate: verdicts live on the graph</span><span class="lconcept">BLOCKED ≠ FAILED</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l92" aria-label="Mark lesson 9.2 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">The test skills share one iron rule: <b>a determination that isn't on the graph didn't happen</b>. <code>bld-test-author</code> writes a scenario and must land its verdict as graph state — PASSED pushes results, FAILED registers a defect Finding with edges, and BLOCKED is an explicit <code>MISSING:&lt;reason&gt;</code> marker plus a <code>BLOCKED_BY</code> edge to the specific prerequisite Finding. <code>bld-test-run</code>'s sharpest move is reconciling those edges to <em>proven</em> reality on every run: probe the target before attributing the block. And <code>bld-test-methodology</code> makes test classification mechanical enough to grep.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p>The driver for the determination contract: a triage once classified 672 test cases and published NONE — analysis without graph writes evaporates. The false-green trap: an assertion written <code>{"path":.., "value":..}</code> instead of the real <code>{actual, op, expected}</code> schema passes VACUOUSLY — unknown keys drop silently and <code>expected</code> becomes nil. <code>bld-test-run</code>'s probe rule: ANY HTTP status back means the block is a TOKEN prerequisite, not network — DNS failure/timeout means genuinely unreachable; 1–5 retries is normal log-lag, 6+ consecutive failures on the same case is real signal. <code>bld-test-methodology</code>'s tautology oracle (pitfall P5): a test was repointed at the exact function the render path calls, going green everywhere while becoming unable to catch a wrong policy — the tell is a test that cannot be made to fail by writing a plausibly WRONG value into production.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Add Test nodes with honest assertions.</strong> A <code>Test</code> node type whose scenario JSON uses <code>{actual, op, expected}</code> triples — and a validator that REJECTS unknown assertion keys instead of dropping them (the vaccine for the false-green trap). Derive <code>state = "blocked"</code> server-side whenever any env value starts with <code>MISSING:</code>; prove the state flips to runnable when you fill the value.</p></li>
+        <li><p><strong>Build the BLOCKED_BY reconcile.</strong> Add the edge type; write <code>/mini-test-run</code>: curl-probe the target URL first — any HTTP status → edge the Test to a "token-missing" prereq Finding; DNS failure/timeout → "network-unreachable". On a green run: delete the satisfied edge, and resolve the prereq Finding when it was the last edge pointing at it. BLOCKED is a legitimate outcome — it must never be flattened into FAILED in your result enum.</p></li>
+        <li><p><strong>Run the methodology greps over your own suite:</strong> DB drivers imported in untagged tests, <code>time.Sleep</code> in tests, assertion-free test functions. File one mini-Finding per hit; re-tag (<code>//go:build integration</code>) or fix each. Your unit tier must run green with the Memgraph container STOPPED — that is what the tags buy you.</p></li>
+        <li><p><strong>Kill a tautology.</strong> Pick one of your tests and ask: can it fail if I write a plausibly WRONG value into the production path? If not, rewrite it against an independently-authored expectation table — then prove it by planting the wrong value and watching it go red.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>An assertion with an unknown key is rejected, not vacuously green; a <code>MISSING:</code> env derives <code>blocked</code>; the probe distinguishes token-vs-network and the green run cleans up its edges; unit tests pass with the container stopped; the planted wrong value turns the de-tautologized test red.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week9" id="l93">
+    <summary><span class="lnum">9.3</span><span class="ltitle">Ship it: integrate, accept, respond</span><span class="lconcept">zero-tolerance exits</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l93" aria-label="Mark lesson 9.3 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">The tail of the pipeline is zero-tolerance by construction. <code>bld-integration-verify</code> replaces mocks with real services in wave order and exits only at "Mock remnants: ZERO"; each failure routes to the stage that <em>owns</em> it via a 4-way classifier. <code>bld-acceptance</code> applies six categories through a scope-aware matrix — mirrored verbatim between the skill doc and the Go config, with a drift test that fails when they disagree. <code>bld-complete-work</code> walks the status machine through its legal waypoints and fails loud on an illegal jump. And <code>bld-qual-review-response</code> carries the estate's bluntest verification lesson: success is the response body saying <code>Recorded</code> — never HTTP 200.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p>The 4-way integration failure classifier: schema incompatibility → Stage 4 regen; behavioral assumption → Stage 1 contract enrichment; timing/ordering → Stage 1 or deployment config; single-responsibility defect → Stage 5 fix — and post-merge defects are fixed FORWARD on main, never reverted. <code>bld-acceptance</code>: a leaf needs zero matrix categories, a system needs all five; the Strategic Architect's SIGNIFICANT REGRET RISK hard-blocks until the DA resolves it. <code>bld-complete-work</code>: BUILT walks BUILT→IN_REVIEW→COMPLETE (acceptance was the review); BUILDING fails loud — no review ever ran. <code>bld-qual-review-response</code>: the feedback URL returns 200 to a GET with a self-submitting form that records NOTHING — the GET-only instruction survived from authoring until 2026-08-14, so every earlier headless run recorded zero verdicts while reporting success; "Recording your feedback" (present participle) vs "Recorded" (past tense) is the entire success discriminator. <code>bld-smoke-cycle</code> proves the pipes in ~5 minutes and never advances lifecycle: its artifact proof is <code>git ls-remote</code> returning a SHA equal to local HEAD.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Run a mini integration pass.</strong> Two Responsibilities, two waves, B consuming what A produces. Build B against a mock publisher; swap in real A; run the contract test from the graph's schema; then deliberately break one field in A's payload and classify the failure with the 4-way classifier before fixing it — the classification, not the fix, is the exercise.</p></li>
+        <li><p><strong>Encode the scope-class matrix twice, then test the drift.</strong> A Go map in your gate checker (<code>leaf/service/system × 3 categories</code>) AND the same table in your mini-acceptance skill doc — plus one test that parses the doc table and fails whenever it disagrees with the map. Run acceptance on a <code>leaf</code> node and verify only the always-on checks fire.</p></li>
+        <li><p><strong>Write <code>/mini-complete-work</code>.</strong> Gate first (<code>check_gate(resp, acceptance_exit)</code>), then the waypoint walk keyed on current status: IN_REVIEW → COMPLETE direct; BUILT → IN_REVIEW → COMPLETE in two calls; BUILDING → fail loud naming the missing review. You proved in week 2 the server rejects illegal jumps — this skill is the client that respects the map instead of fighting it.</p></li>
+        <li><p><strong>Build the Recorded-not-200 lesson.</strong> Add <code>/feedback/:id/:verdict</code> to your HTTP API: GET returns 200 with body "Recording your feedback"; POST returns 200 with body "Recorded". Write the disposition client that counts a verdict only on the POST body matching <code>Recorded</code> — and a test proving a GET-only client reports zero recorded while seeing nothing but 200s.</p></li>
+        <li><p><strong>Extract modal verbs into severities.</strong> A checker that greps your mini rules files for MUST / NEVER / DON'T lines and maps verb → severity (NEVER = RED blocking, MUST = YELLOW, RED when it touches auth or the spine). Wire one rule into mini-promote: implementing a decision still in <code>Proposed</code> blocks with a RED — only the human flips Proposed → Accepted.</p></li>
+      </ol>
+      <div class="callout check"><h4>Checkpoint</h4><p>The broken payload lands in the right classifier bucket; the doc-vs-Go drift test goes red when you edit one side; BUILDING → COMPLETE fails in the skill AND the server; the GET-only client provably records nothing; and a Proposed-status implementation blocks RED.</p></div>
+      <div class="callout war"><h4>Why it exists</h4><p>Every mechanism in this lesson replaces a trust assumption with a check: "the merge is probably fine" → wave-ordered contract tests; "the reviewer probably looked" → matrix + drift test; "200 means it worked" → read the body. The pipeline's tail is where optimism is most expensive, because everything after it is production.</p></div>
+    </div>
+  </details>
+
+  <details class="lesson" data-week="week9" id="l94">
+    <summary><span class="lnum">9.4</span><span class="ltitle">Operating the fleet — and the atlas</span><span class="lconcept">the atlas</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l94" aria-label="Mark lesson 9.4 done"></label><span class="chev">▶</span></summary>
+    <div class="lbody">
+      <p class="lead">The last family keeps the pipeline honest <em>over time</em>: an FSM orchestrator that persists its state as graph nodes, a disk→graph sync with explicit conflict rules, drift detectors that join git history with graph governance, and four production operator skills that drive a deployed product surface under server-enforced four-eyes. Their shared shape: <b>durable state plus gated seams</b> — a mechanical read-only detection pass, a mutation that fires only through an explicit gate, and state persisted at every seam so a crashed run resumes instead of restarting.</p>
+      <div class="callout real">
+        <h4>In the real system</h4>
+        <p><code>bld-orchestrate</code>: create a <code>StageExecution</code> node BEFORE spawning each sub-agent, mark it after; "no gate check = no status advance"; a session active &gt;4h with no evidence is stale — ask the human, never auto-re-run; a sub-agent that fails twice is escalated and the orchestrator moves on — one retry, then escalate. <code>bld-sync-hosted</code>'s conflict rules R1–R5, first match wins: hosted-absent → apply; hosted &gt;1.5× richer and local looks like a stub → SKIP (never overwrite richer content); byte-equal → skip; local richer → apply; both differ → ask the DA. Posting order matters: Decisions before Responsibilities, because lineage-edge targets must exist first — and a synced Decision is <em>semantically dark</em> until <code>embed_document</code> runs. <code>bld-project-onboard</code>'s lie detector: if the wave plan puts everything in wave 1, the dependency graph is incomplete. The collections quartet (companion / expert / rule-analyst / rule-approver) shows skills as <em>product surface</em>: bootstrap hard gates (wrong-env token fails loud, zero-book stops the session), role gates (CREATOR / APPROVER checked server-side), and four-eyes the agent may not close — <code>self_approval_blocked</code> is a server refusal, surfaced verbatim, never retried around.</p>
+      </div>
+      <h4>Tasks</h4>
+      <ol class="steps">
+        <li><p><strong>Give your pipeline an FSM memory.</strong> Add <code>Run</code> and <code>StageExecution</code> node types; <code>/mini-orchestrate</code> creates a StageExecution before each phase and marks it complete/failed after. Kill the session mid-run; verify the restart resumes from graph state — completed phases skipped, the interrupted one re-entered.</p></li>
+        <li><p><strong>Implement disk→graph sync with R1–R5.</strong> Seed one Decision whose graph body is 2× richer than its disk file and verify R2 skips it (never overwrite richer content); verify posting a Responsibility before its <code>GOVERNED_BY</code> target Decision fails, then succeeds when you order Decisions first; and index every synced node (<code>_search</code>) or watch it stay dark to your week-4 search.</p></li>
+        <li><p><strong>Enforce four-eyes.</strong> Stamp the submitter's id on each rule-ish draft node; make the approve MCP tool return <code>self_approval_blocked</code> when approver == submitter; have your mini-approver skill surface the refusal verbatim instead of retrying under another identity. The gate lives in the server — the skill only relays it.</p></li>
+        <li><p><strong>Work the atlas.</strong> Read the table below end to end — it is the whole estate. Pick THREE skills you did not build this week and write a one-paragraph mini design for each: its one permitted verb (or gate), its resume story, and the war story you'd tell a junior about why it exists.</p></li>
+      </ol>
+      <h4>The atlas — all 57 pipeline skills</h4>
+      <p>One row per skill: what it does, and where its mechanism lives in this course. <b>Built</b> means you cloned its core mechanism; <b>atlas</b> means know it exists and what it enforces.</p>
+      <div class="tablewrap"><table>
+        <tr><th>Skill</th><th>One line</th><th>Here</th></tr>
+        <tr><td colspan="3"><b>The funnel</b></td></tr>
+        <tr><td><code>bld-ideate</code></td><td>Six forcing questions → CIR; reserve→redeem ids; ≥3 answers or no CIR</td><td>7.1 · 8.1</td></tr>
+        <tr><td><code>bld-backlog</code></td><td>Batch stub capture, one confirmation, honest stubs, idempotent by nonce</td><td>8.1</td></tr>
+        <tr><td><code>bld-narrative-author</code></td><td>Domain narrative behind a server-side 4-check Agreed-gate; parking-lot back-pressure</td><td>8.1 (atlas)</td></tr>
+        <tr><td><code>bld-challenge</code></td><td>Adversarial CIR stress-test; isolated reviewer; ≥2 alternatives mandatory</td><td>8.2</td></tr>
+        <tr><td><code>bld-promote</code></td><td>CIR → xDR with verify-or-mark on every hosted write; held flip on failure</td><td>7.1 · 8.2</td></tr>
+        <tr><td><code>bld-scope-review</code></td><td>Pre-brief estate check; two-pass search; CLEAR/BLOCKED verdict</td><td>8.2</td></tr>
+        <tr><td><code>bld-author-decision</code></td><td>Direct xDR authoring behind a 7-box graph+disk conflict gate</td><td>8.2</td></tr>
+        <tr><td colspan="3"><b>The design chain</b></td></tr>
+        <tr><td><code>bld-strategic-design</code></td><td>Brief with no-TBD dependency tables; per-step gate checklists</td><td>8.3</td></tr>
+        <tr><td><code>bld-autonomous-design</code></td><td>One Designer + parallel reviewers; converge ledger; 3-round cap; growth tripwire</td><td>8.3</td></tr>
+        <tr><td><code>bld-design-review</code></td><td>Four fixed lenses; zero-open-items exit; per-lens verdict enums</td><td>8.3</td></tr>
+        <tr><td><code>bld-design-update</code></td><td>Governance-delta scan since last approval; cosmetic-only = stop</td><td>8.3</td></tr>
+        <tr><td><code>bld-architecture-review</code></td><td>Hop-by-hop data tracing; data-identity conflation is CRITICAL</td><td>8.3 (atlas)</td></tr>
+        <tr><td><code>bld-figma-to-react</code></td><td>Extract → map-to-tokens (STOP on missing token) → screenshot-diff loop</td><td>8.3 (atlas)</td></tr>
+        <tr><td colspan="3"><b>The findings machinery</b></td></tr>
+        <tr><td><code>bld-dedup-findings</code></td><td>TF-IDF cosine tiers; link-only; artifact overlap never ranks</td><td>8.4</td></tr>
+        <tr><td><code>bld-route-findings</code></td><td>Detector proposes, human disposes; ROUTED verb only; sent-ledger idempotency</td><td>8.4</td></tr>
+        <tr><td><code>bld-findings-disposition</code></td><td>Earned-autonomy fast-forward of route; one human gate survives</td><td>8.4</td></tr>
+        <tr><td><code>bld-dispose-findings</code></td><td>7-row priority cascade retiring stale findings; PARK ≠ REJECTED</td><td>8.4 (atlas)</td></tr>
+        <tr><td><code>bld-responsibility-from-finding</code></td><td>Finding → Responsibility with DERIVED_FROM + mandatory closing criterion</td><td>8.4</td></tr>
+        <tr><td><code>bld-responsibility-from-decision</code></td><td>Accepted xDR → Responsibility; MUST lines become acceptance criteria</td><td>8.4 (atlas)</td></tr>
+        <tr><td><code>bld-responsibility-from-split</code></td><td>Partition an overgrown parent; BELONGS_TO swap for un-started WPs only</td><td>8.4 (atlas)</td></tr>
+        <tr><td><code>bld-transcript-harvest</code></td><td>UAT transcripts → citation-only Findings; template IS the dedup key</td><td>8.4 (atlas)</td></tr>
+        <tr><td colspan="3"><b>Build</b></td></tr>
+        <tr><td><code>bld-foundation-build</code></td><td>Shared base + mocks; Foundation Exit; pkg/ freezes after</td><td>9.1</td></tr>
+        <tr><td><code>bld-autonomous-build</code></td><td>Phases 0→G; verify-personally-then-gate; child session ledger</td><td>9.1 · 10.3</td></tr>
+        <tr><td><code>bld-branch-discipline</code></td><td>One worktree one branch; directory isolation; 7-condition merge gate</td><td>9.1</td></tr>
+        <tr><td><code>bld-tech-stack-patterns</code></td><td>Pattern rows bound to ADRs; findings are citations, not opinions</td><td>9.1</td></tr>
+        <tr><td colspan="3"><b>Test</b></td></tr>
+        <tr><td><code>bld-test-author</code></td><td>Scenario authoring; the determination contract; false-green assertion trap</td><td>9.2</td></tr>
+        <tr><td><code>bld-test-run</code></td><td>Probe-then-attribute; BLOCKED_BY reconcile; 6+ fails = signal</td><td>9.2</td></tr>
+        <tr><td><code>bld-test-methodology</code></td><td>80/15/5 pyramid; grep-able classification; the tautology oracle</td><td>9.2</td></tr>
+        <tr><td><code>bld-e2e-decompose-journey</code></td><td>Journey → Scenario tree behind a scope-confirmation gate (on hold)</td><td>atlas</td></tr>
+        <tr><td><code>bld-record-session</code></td><td>Dual-plane wire recording; commit shapes, never values</td><td>atlas</td></tr>
+        <tr><td colspan="3"><b>Ship &amp; review</b></td></tr>
+        <tr><td><code>bld-integration-verify</code></td><td>Wave-ordered mock→real; 4-way failure classifier; Mock remnants: ZERO</td><td>9.3 · 10.4</td></tr>
+        <tr><td><code>bld-acceptance</code></td><td>Scope-aware category matrix, doc↔Go drift-tested; regret-risk hard block</td><td>9.3 · 10.4</td></tr>
+        <tr><td><code>bld-complete-work</code></td><td>Waypoint walk to COMPLETE; Outcome rollup defect check</td><td>9.3 · 10.4</td></tr>
+        <tr><td><code>bld-qual-review-response</code></td><td>Evidence-first dispositions; success = body says "Recorded", never 200</td><td>9.3</td></tr>
+        <tr><td><code>bld-smoke-cycle</code></td><td>5-minute plumbing smoke; ls-remote SHA read-back; touches no lifecycle</td><td>9.3 (atlas)</td></tr>
+        <tr><td><code>bld-engineering-review</code></td><td>Ten lenses; caller-contract analysis; error-distinguishability smell</td><td>9.3 (atlas)</td></tr>
+        <tr><td><code>bld-compliance-review</code></td><td>Modal-verb extraction; NEVER = RED; Proposed-status implementation blocks</td><td>9.3</td></tr>
+        <tr><td><code>bld-logging-audit</code></td><td>Fleet fan-out audit; never relay "conformant"; import ≠ chain</td><td>atlas</td></tr>
+        <tr><td><code>bld-pr-cross-branch-check</code></td><td>Everything diffed vs origin/target; id collisions; self-accepted xDR blocks</td><td>atlas</td></tr>
+        <tr><td><code>bld-corpus-coherence-check</code></td><td>Pairwise HONOUR/IGNORE/CONTRADICT walk over root constraints</td><td>atlas</td></tr>
+        <tr><td colspan="3"><b>Fleet operations</b></td></tr>
+        <tr><td><code>bld-orchestrate</code></td><td>Graph-backed FSM; write state before acting; stale sessions ask the human</td><td>9.4</td></tr>
+        <tr><td><code>bld-sprint-review</code></td><td>Dual-lens SDD compliance; FUNCTIONAL/STUB/MISSING; &gt;3 deferrals = debt work</td><td>atlas</td></tr>
+        <tr><td><code>bld-project-onboard</code></td><td>Repo → graph; edges ARE the execution model; wave-plan lie detector</td><td>9.4</td></tr>
+        <tr><td><code>bld-sync-hosted</code></td><td>Disk → hosted with R1–R5 conflict rules; Decisions post first; embed or dark</td><td>9.4</td></tr>
+        <tr><td><code>bld-dde-support-triage</code></td><td>SupportReport → Finding/Resp/CIR; nothing authored before the confirm</td><td>atlas</td></tr>
+        <tr><td><code>bld-backfill-eli10</code></td><td>One node per invocation; never pad — defer when the source is thin</td><td>atlas</td></tr>
+        <tr><td><code>bld-calibrate-shadow-gate</code></td><td>Shadow evidence walk; cutover Decision node flips shadow → enforce</td><td>atlas</td></tr>
+        <tr><td><code>bld-xdr-pr-status</code></td><td>PR × xDR status join; catches merged-but-still-Proposed strand risk</td><td>atlas</td></tr>
+        <tr><td><code>bld-xdr-regen-pilot</code></td><td>Clean-room regen from records alone; gaps close by amending records, never code</td><td>atlas</td></tr>
+        <tr><td><code>bld-refactor-scan</code></td><td>Git delta × GOVERNED_BY join; flags built code whose governor moved</td><td>atlas</td></tr>
+        <tr><td><code>bld-refactor-drive</code></td><td>Propose-only remediation; apply path deferred behind named prerequisites</td><td>atlas</td></tr>
+        <tr><td><code>bld-arch-view-delta</code></td><td>Deterministic worklist → in-style diagram edits → per-lens baseline stamp</td><td>atlas</td></tr>
+        <tr><td><code>bld-pipeline-decomposition</code></td><td>CI/CD scaffolding methodology; trigger-path symmetry; pitfalls.md log</td><td>atlas</td></tr>
+        <tr><td colspan="3"><b>Skills as product (the collections quartet)</b></td></tr>
+        <tr><td><code>bld-collections-companion</code></td><td>Drives the deployed chat backend; bootstrap hard gates; env lock file</td><td>9.4 (atlas)</td></tr>
+        <tr><td><code>bld-collections-expert</code></td><td>Composes two skills by reference; per-loop role gates; honest "would, not did"</td><td>9.4 (atlas)</td></tr>
+        <tr><td><code>bld-collections-rule-analyst</code></td><td>Evidence-backed rule authoring; estate reconcile before create</td><td>9.4 (atlas)</td></tr>
+        <tr><td><code>bld-collections-rule-approver</code></td><td>Approver twin; verifies rationale numbers; self_approval_blocked is law</td><td>9.4</td></tr>
+      </table></div>
+      <div class="callout check"><h4>Checkpoint — end of week 9</h4><p>A killed mini-orchestrate run resumes from Run/StageExecution state; R2 provably protects richer graph content and mis-ordered posting provably fails; approve-your-own-draft returns <code>self_approval_blocked</code> from the server; and you can name, for any of the 57 rows, the one mechanism that skill exists to enforce.</p></div>
+      <div class="callout war"><h4>Why it exists</h4><p>The estate is not 57 clever prompts — it is a few hard-won mechanisms (reserve→redeem, verify-or-mark, bounded loops, one verb per skill, verify-personally, durable seams, four-eyes) instantiated wherever the pipeline touches reality. Learn the mechanisms and the catalog stops being memorization; meet a new skill and you already know its skeleton.</p></div>
+    </div>
+  </details>
+</section>
+<!-- ============================================================ WEEK 10 -->
+<section class="view" id="week10">
+  <header class="weekhead">
+    <p class="eyebrow">Week 10 · Part V — prove it</p>
     <h2>Capstone: mini-C2C, built through mini-DDE</h2>
     <p class="wintro">Everything converges. You'll build a real event-driven application — <b>mini-booking → mini-billing → mini-collections</b>, Go services talking only through events on a hashed contract-spine ordering key, plus a Next.js frontend on the C2C three-zone shell — and you'll build it <em>through</em> your mini-DDE: designed in the graph, planned in waves, built to contracts, verified by gates, accepted with verdicts and a DoD. The app is the exam; the process is the lesson.</p>
     <ul class="wgoals">
@@ -3213,11 +3478,11 @@ function Card({ node }: { node: Node }) {
       <li><b>The discipline:</b> outbox, idempotent consumers, guarded transitions</li>
       <li><b>The proof:</b> <code>acceptance_exit</code> passes; COMPLETE through the hooks</li>
     </ul>
-    <div class="wtools"><button data-expand="week8">Expand all lessons</button><button data-collapse="week8">Collapse all</button></div>
+    <div class="wtools"><button data-expand="week10">Expand all lessons</button><button data-collapse="week10">Collapse all</button></div>
   </header>
 
-  <details class="lesson" data-week="week8" id="l81">
-    <summary><span class="lnum">8.1</span><span class="ltitle">Ideate → promote → plan</span><span class="lconcept">stages pre-0 → 3</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l81" aria-label="Mark lesson 8.1 done"></label><span class="chev">▶</span></summary>
+  <details class="lesson" data-week="week10" id="l101">
+    <summary><span class="lnum">10.1</span><span class="ltitle">Ideate → promote → plan</span><span class="lconcept">stages pre-0 → 3</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l101" aria-label="Mark lesson 10.1 done"></label><span class="chev">▶</span></summary>
     <div class="lbody">
       <p class="lead">Before a line of service code: finish the design plane. The graph already holds the skeleton from week 5 (three Responsibilities, events, WPs); now you complete it the way Stage 0–3 would — governance via the funnel, contracts tightened to validation-grade, specs complete enough to build from, and a wave plan whose parallelism you'll actually use.</p>
       <div class="callout real">
@@ -3226,7 +3491,7 @@ function Card({ node }: { node: Node }) {
       </div>
       <h4>Tasks</h4>
       <ol class="steps">
-        <li><p><strong>Run the funnel for the data decision.</strong> <code>/mini-ideate</code>: "one shared event envelope, ordered per contract by a hashed SAP Contract Number". Challenge it yourself (riskiest assumption: is a hash necessary in a local toy? — yes, because the ordering key travels in transport metadata, and metadata escapes payload access control; you are cloning the reasoning, not the threat model). Validate, then <code>/mini-promote</code> → a <b>DDR</b>: envelope fields <code>event_id, event_type, schema_version, ordering_key, occurred_at, payload</code>; <code>ordering_key = hex(sha256(sap))[:16]</code>, never the raw number; consumers dedup on <code>event_id</code>. Accept it; edge every Responsibility <code>GOVERNED_BY</code> it.</p></li>
+        <li><p><strong>Run the funnel for the data decision.</strong> <code>/mini-ideate</code>: "one shared event envelope, ordered per contract by a hashed SAP Contract Number". <code>/mini-challenge</code> it (riskiest assumption: is a hash necessary in a local toy? — yes, because the ordering key travels in transport metadata, and metadata escapes payload access control; you are cloning the reasoning, not the threat model). Validate, then <code>/mini-promote</code> (watch verify-or-mark read both writes back) and <code>/mini-scope-review</code> (expect CLEAR) → a <b>DDR</b>: envelope fields <code>event_id, event_type, schema_version, ordering_key, occurred_at, payload</code>; <code>ordering_key = hex(sha256(sap))[:16]</code>, never the raw number; consumers dedup on <code>event_id</code>. Accept it; edge every Responsibility <code>GOVERNED_BY</code> it.</p></li>
         <li><p><strong>Tighten all five event schemas</strong> to validation-grade (required fields, the <code>^SAP-[0-9]{4}-[0-9]{6}$</code> pattern, date-time formats):</p>
           <div class="tablewrap"><table>
             <tr><th>#</th><th>Event</th><th>Producer → consumers</th><th>Payload (beyond envelope)</th><th>Spine effect</th></tr>
@@ -3237,7 +3502,7 @@ function Card({ node }: { node: Node }) {
             <tr><td>5</td><td><code>c2c.contract.closed</code></td><td>booking → all</td><td class="wrapcode"><code>sap_contract_number, closed_at</code></td><td>financially closing → closed</td></tr>
           </table></div>
           <p>Event #2 exists to teach symmetry: a service consuming its own event through the bus behaves exactly like any other consumer — same dedup, same ordering. (It also adds no build dependency: <code>ChoreographyDeps</code>' <code>producer.id &lt;&gt; consumer.id</code> guard skips self-consumption.)</p>
-          <p>Then give each contract a lifecycle-bearing home: mint one <code>Contract</code> node per event (<code>ctr-contract-booked</code> … five in all, props <code>{"event": "evt-contract-booked"}</code>), born <code>SPECIFIED</code> through the 5.1 map, and link each <code>-[:DEFINES]-&gt;</code> its Event — one last edge type to mint (<code>EdgeDefines = "DEFINES"</code>, added to week 1's constants and allowlist; it is the real system's Contract → Event edge, and it makes <code>query_contract</code>'s Contract-then-Event fallback non-vacuous at last). The Event keeps carrying the schema; the Contract node tracks how far the <em>implementation</em> of that schema has progressed — SPECIFIED now, BUILT in 8.3, VERIFIED in 8.4.</p></li>
+          <p>Then give each contract a lifecycle-bearing home: mint one <code>Contract</code> node per event (<code>ctr-contract-booked</code> … five in all, props <code>{"event": "evt-contract-booked"}</code>), born <code>SPECIFIED</code> through the 5.1 map, and link each <code>-[:DEFINES]-&gt;</code> its Event — one last edge type to mint (<code>EdgeDefines = "DEFINES"</code>, added to week 1's constants and allowlist; it is the real system's Contract → Event edge, and it makes <code>query_contract</code>'s Contract-then-Event fallback non-vacuous at last). The Event keeps carrying the schema; the Contract node tracks how far the <em>implementation</em> of that schema has progressed — SPECIFIED now, BUILT in 10.3, VERIFIED in 10.4.</p></li>
         <li><p><strong>Complete the specs</strong> (<code>docs/sdd/*-sdd.md</code> from week 5) to build-from-alone grade. Each spec must state: owned tables, HTTP surface, events in/out with the spine effect, and the invariants — booking is the <b>single writer of the spine state machine</b>; billing's invoice statuses (<code>draft|issued|paid</code>) and collections' receivable statuses (<code>open|reminded|settled</code>) are <em>substates on their own objects, never a second spine</em>. Run <code>compute_context_packages</code> until all green.</p></li>
         <li><p><strong>Plan and freeze.</strong> <code>compute_wave_plan</code> — expected: wave 1 <code>wp-book-api</code>; wave 2 <code>wp-book-events</code>; wave 3 <code>wp-bill-consume</code> ∥ <code>wp-col-consume</code>; wave 4 <code>wp-bill-issue</code> ∥ <code>wp-col-settle</code>. Then walk all three Responsibilities to <code>DESIGN_COMPLETE</code> — which means passing <code>design_exit</code> first; your own hook from week 6 will make sure you don't skip it.</p></li>
       </ol>
@@ -3245,8 +3510,8 @@ function Card({ node }: { node: Node }) {
     </div>
   </details>
 
-  <details class="lesson" data-week="week8" id="l82">
-    <summary><span class="lnum">8.2</span><span class="ltitle">Foundation: envelope, outbox, contracts</span><span class="lconcept">stage 4</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l82" aria-label="Mark lesson 8.2 done"></label><span class="chev">▶</span></summary>
+  <details class="lesson" data-week="week10" id="l102">
+    <summary><span class="lnum">10.2</span><span class="ltitle">Foundation: envelope, outbox, contracts</span><span class="lconcept">stage 4</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l102" aria-label="Mark lesson 10.2 done"></label><span class="chev">▶</span></summary>
     <div class="lbody">
       <p class="lead">Stage 4 builds the <b>stable base every builder branches from</b>: shared types generated from contracts, the event envelope, local infra. After this lesson, <code>capstone/pkg/</code> is frozen — during the build week (er, lesson), shared code is read-only; if it has a bug, you register a finding, you don't hot-patch it from a service.</p>
       <div class="callout real">
@@ -3314,14 +3579,14 @@ CREATE TABLE IF NOT EXISTS consumed_event (
 // on failure is the at-least-once semantics consumers must survive.</code></pre></div>
           <p>Implement the drainer loop yourself (~40 lines: <code>SELECT … WHERE status='pending' ORDER BY created_at</code>, POST the envelope to each subscriber URL, <code>UPDATE … SET status='published'</code> on all-2xx). Keep SQLite per service for the teaching build (one file each: <code>booking.db</code>, <code>billing.db</code>, <code>collections.db</code>) — and notice the two planes: <b>Memgraph holds the DDE metadata about the work</b> (responsibilities, contracts, gates), while <b>each service privately owns its runtime data</b> relationally, exactly as real services own their AlloyDB schemas and never touch the builder's graph. The pattern, not Postgres, is the lesson; note where the real system differs (AlloyDB, a separate drainer <em>service</em>, real Pub/Sub with <code>EnableMessageOrdering</code>).</p></li>
         <li><p><strong>Generate typed payload structs from the contracts.</strong> One <code>capstone/pkg/contracts/types.go</code> with a struct per event payload, field names matching the JSON Schemas exactly. Write a contract test: marshal an example of each struct, run it through <code>validate_schema</code> (call your mini-DDE HTTP API from the test, or export <code>ValidateAgainst</code>) — <b>the structs are now mechanically chained to the graph's contracts</b>.</p></li>
-        <li><p><strong>Foundation exit.</strong> Mark the Contract nodes <code>SPECIFIED → BUILT</code>… no — read the map: BUILT means code exists; that's true only for the shared types. This is a judgment call the real system resolves cleanly: contract status tracks the <em>implementation</em>, so leave them SPECIFIED until 8.3. Instead: commit, tag <code>foundation-v1</code>, and declare <code>capstone/pkg/</code> frozen. Register a Pattern node while you're here: "state change + outbox row in one tx" — you'll cite it in reviews.</p></li>
+        <li><p><strong>Foundation exit.</strong> Mark the Contract nodes <code>SPECIFIED → BUILT</code>… no — read the map: BUILT means code exists; that's true only for the shared types. This is a judgment call the real system resolves cleanly: contract status tracks the <em>implementation</em>, so leave them SPECIFIED until 10.3. Instead: commit, tag <code>foundation-v1</code>, and declare <code>capstone/pkg/</code> frozen. Register a Pattern node while you're here: "state change + outbox row in one tx" — you'll cite it in reviews.</p></li>
       </ol>
       <div class="callout check"><h4>Checkpoint</h4><p>Envelope + outbox + typed contracts compile; the contract test proves struct↔schema fidelity; <code>SpineOrderingKey("SAP-2026-000042")</code> returns a stable 16-hex-char key; foundation tagged and frozen.</p></div>
     </div>
   </details>
 
-  <details class="lesson" data-week="week8" id="l83">
-    <summary><span class="lnum">8.3</span><span class="ltitle">Build the three services</span><span class="lconcept">stage 5</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l83" aria-label="Mark lesson 8.3 done"></label><span class="chev">▶</span></summary>
+  <details class="lesson" data-week="week10" id="l103">
+    <summary><span class="lnum">10.3</span><span class="ltitle">Build the three services</span><span class="lconcept">stage 5</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l103" aria-label="Mark lesson 10.3 done"></label><span class="chev">▶</span></summary>
     <div class="lbody">
       <p class="lead">Now build <b>in wave order, to contracts, with the graph watching</b>. Each service follows the canonical Go service anatomy; each consumes events idempotently (dedup ledger + guarded single-winner updates); and you work like the pipeline works: claim the WP, build, test, submit evidence, pass the gate, move status — with findings registered at the point of friction, not remembered at the end.</p>
       <div class="callout real">
@@ -3368,7 +3633,7 @@ func (s *Store) Book(ctx context.Context, reqID string) (string, error) {
 	}
 	return sap, tx.Commit()
 }</code></pre></div>
-          <p>Booking also owns the <b>spine state machine</b> — a <code>domain/spine.go</code> transition map (<code>setup→active→in fulfilment→financially closing→closed</code>) advanced <em>only</em> by consumed events (events 2, 3, 5) and by the all-receivables-settled check that emits event 5. Work the process: <code>assign_agent("builder", "booking-core")</code> → <code>claim_work</code> both WPs in sequence → build → <code>go test</code> → <code>submit_gate_evidence(booking-core, build_exit, tests_pass, &lt;output&gt;, true)</code>.</p></li>
+          <p>Booking also owns the <b>spine state machine</b> — a <code>domain/spine.go</code> transition map (<code>setup→active→in fulfilment→financially closing→closed</code>) advanced <em>only</em> by consumed events (events 2, 3, 5) and by the all-receivables-settled check that emits event 5. Work the process: <code>assign_agent("builder", "booking-core")</code> → <code>claim_work</code> both WPs in sequence → build → <code>go test</code> → <code>submit_gate_evidence(booking-core, build_exit, tests_pass, &lt;output&gt;, true)</code> — plus the <code>compile_clean</code> and <code>no_stubs_detected</code> classes your 9.1 upgrade made mandatory; the gate now blocks on a missing class.</p></li>
         <li><p><strong>The consumer template</strong> — write once in mini-billing, reuse in collections. Handler entry: dedup, dispatch, ACK/NACK:</p>
           <div class="code" data-file><span class="fname">mini-billing/internal/transport/events.go</span><pre><code>// POST /events — the push receiver. Contract: 200 = ACK (consumed),
 // 5xx = NACK (the drainer redelivers). Duplicates are handled-and-nil.
@@ -3396,15 +3661,15 @@ func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
           <p><b>mini-billing</b> (waves 3–4): on <code>contract.booked</code> → create a draft invoice; <code>POST /api/invoices/{id}/issue</code> → guarded <code>draft→issued</code> + <code>c2c.invoice.issued</code> outbox row, one tx; on <code>receivable.settled</code> → invoice <code>paid</code>. <b>mini-collections</b> (waves 3–4): on <code>invoice.issued</code> → open a receivable; <code>remind</code> appends to the append-only <code>action_log</code>; <code>settle</code> = guarded transition + <code>c2c.receivable.settled</code> outbox row.</p></li>
         <li><p><strong>Honor the wave plan.</strong> Waves 3–4 are parallel by design — if you have a study buddy, split billing/collections and feel contract-first coordination: you never read each other's code, only the schemas. Solo, alternate services per wave. Either way: <em>never</em> import one service from another; if you're tempted, the contract is missing something — <code>register_finding</code>, fix the contract, regenerate the shared type.</p></li>
         <li><p><strong>Register findings as they happen.</strong> You will hit at least: a schema field you forgot (evidence: the validate_schema error), an ordering assumption (what if <code>invoice.issued</code> arrives before billing saw <code>contract.booked</code>? — findings classification <code>behavioral_assumption</code>; resolution: consumers must tolerate out-of-order across <em>different</em> ordering keys, and per-key ordering is only as good as the drainer's ORDER BY — write that down as a DDR amendment candidate). Friction captured at the point of friction is the week's real deliverable.</p></li>
-        <li><p><strong>Close Stage 5 per service:</strong> tests green (unit + a contract test per consumed event: valid payload → state change; malformed → NACK; duplicate → no double-write), DoD flipped honestly, <code>tests_pass</code> evidence submitted, <code>check_gate(_, build_exit)</code> passing, status walked to <code>BUILT</code> then <code>IN_REVIEW</code> — and run the week-6 reviewer ensemble (skeptic/consistency/craftsman via Claude) over each service. Mark each Contract node <code>BUILT</code>.</p></li>
+        <li><p><strong>Close Stage 5 per service:</strong> tests green (unit + a contract test per consumed event: valid payload → state change; malformed → NACK; duplicate → no double-write), DoD flipped honestly, all three evidence classes submitted (<code>tests_pass</code>, <code>compile_clean</code>, <code>no_stubs_detected</code>), <code>check_gate(_, build_exit)</code> passing, status walked to <code>BUILT</code> then <code>IN_REVIEW</code> — and run the week-6 reviewer ensemble (skeptic/consistency/craftsman via Claude) over each service. Mark each Contract node <code>BUILT</code>.</p></li>
       </ol>
       <div class="callout check"><h4>Checkpoint</h4><p>Three services build and test green in isolation; each consumes idempotently (prove: POST the same envelope twice — one state change); <code>build_exit</code> passes for all three; the graph shows sessions, claims, evidence, verdicts, and findings telling the true story of the build.</p></div>
       <div class="callout war"><h4>Why it exists</h4><p>The outbox is <em>the</em> distributed-systems lesson of the real repo: every producer writes state + outbox row in one transaction, a drainer publishes, consumers dedup on <code>event_id</code>, and a republish re-sends the same id so a correct consumer converges. Every piece exists because the naive alternative (publish-after-commit, or commit-after-publish) loses or duplicates events under crash — there is no third option, only the outbox.</p></div>
     </div>
   </details>
 
-  <details class="lesson" data-week="week8" id="l84">
-    <summary><span class="lnum">8.4</span><span class="ltitle">Frontend, integration &amp; acceptance</span><span class="lconcept">stages 6–7</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l84" aria-label="Mark lesson 8.4 done"></label><span class="chev">▶</span></summary>
+  <details class="lesson" data-week="week10" id="l104">
+    <summary><span class="lnum">10.4</span><span class="ltitle">Frontend, integration &amp; acceptance</span><span class="lconcept">stages 6–7</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l104" aria-label="Mark lesson 10.4 done"></label><span class="chev">▶</span></summary>
     <div class="lbody">
       <p class="lead">The last mile: a frontend on the <b>locked C2C shell</b>, integration verification in wave order, and the acceptance walk your hooks have been waiting to enforce. Then the graduation exercise: mapping every piece you built back to its full-size counterpart.</p>
       <div class="callout real">
@@ -3430,7 +3695,7 @@ func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
         <li><p><strong>Integration verification, wave order.</strong> Bring up all three services + drainers (a <code>Procfile</code>/<code>compose.yaml</code> or three terminals), then run the choreography end to end <em>and write it as a script</em> (<code>capstone/test/e2e.sh</code>): create booking → book it → assert billing has a draft invoice (poll, don't sleep-and-pray) → issue → assert collections opened a receivable → settle → assert invoice <code>paid</code> AND booking spine at <code>financially closing</code> → assert booking emits <code>contract.closed</code> → spine <code>closed</code>. Exception paths too: malformed envelope → 400, no retry; kill mini-collections mid-flow → drainer redelivers on restart, dedup absorbs the replays. Classify anything that breaks the way Stage 6 does: schema mismatch → foundation bug; behavioral assumption → contract needs enrichment (fix the DDR/schema, then the code); single-service defect → back to that service only. Register the findings; resolve them; re-run to green.</p></li>
         <li><p><strong>Update the graph to match reality.</strong> If integration revealed an event flow the graph doesn't model (it usually does — did booking <em>really</em> consume <code>receivable.settled</code>?), fix the PRODUCES/CONSUMES edges now. Start with the ones 5.3 taught you to withhold from the planning graph: booking's PRODUCES on <code>booking.completed</code>/<code>contract.closed</code> (plus its self-CONSUMES on the former and the closed fan-out), collections' CONSUMES on <code>invoice.issued</code>, billing's on <code>receivable.settled</code>, booking's on both. Waves are history — from here the graph documents runtime truth for the next reader. The graph must match what the integrated system actually does, not what was designed. Mark Contracts <code>VERIFIED</code>; walk Responsibilities to <code>INTEGRATING</code> (the <code>integration-ish</code> statuses are yours to gate if you added one — otherwise proceed).</p></li>
         <li><p><strong>The acceptance walk — your machinery, end to end.</strong> For each Responsibility: strategic review (ask Claude for the 3-sprint regret test over the whole capstone; <code>record_verdict(reviewer=strategic)</code>); re-audit the DoD (runbooks exist? observability = the event bus monitor + health endpoints — flip honestly); submit <code>deployment_verified</code> evidence (the e2e script's output); ensure every finding terminal; then <code>check_gate(_, acceptance_exit)</code> → and finally <code>update_status → COMPLETE</code>, which your week-6 hook only permits because the gate flag exists. If any step blocks — that's the system working; do the work it names.</p></li>
-        <li><p><strong>Graduate.</strong> Write the retro as a course-closing document (<code>docs/working/retro.md</code>): for each mini piece, name its full-size counterpart and one thing the real one does that yours doesn't — your store vs Neo4j+Cypher with 63 types; your 3 gates vs 22 with scope/variant awareness and evidence freshness; your hook pair vs a 48-hook estate; your funnel vs ideate→challenge→promote with adversarial review; your wave planner vs one that persists tagged derived edges. Then open the real repo and read, in this order: <code>docs/governance-framework.md</code> §7 again (it will read differently now), <code>bld-autonomous-build/SKILL.md</code> end to end, and <code>gate_scope_aware.go</code>. You'll recognize everything — that's what mastery feels like.</p></li>
+        <li><p><strong>Graduate.</strong> Write the retro as a course-closing document (<code>docs/working/retro.md</code>): for each mini piece, name its full-size counterpart and one thing the real one does that yours doesn't — your store vs Neo4j+Cypher with 63 types; your 5 gates vs 22 with scope/variant awareness and evidence freshness; your hook pair vs a 48-hook estate; your single isolated <code>/mini-challenge</code> reviewer vs the multi-lens ensemble with banner-schema'd DA questions; your wave planner vs one that persists tagged derived edges. Then open the real repo and read, in this order: <code>docs/governance-framework.md</code> §7 again (it will read differently now), <code>bld-autonomous-build/SKILL.md</code> end to end, and <code>gate_scope_aware.go</code>. You'll recognize everything — that's what mastery feels like.</p></li>
       </ol>
       <div class="callout check"><h4>Checkpoint — course complete</h4><p>The e2e script runs green from booking to <code>closed</code>; the UI shows the spine stepper advancing live; all three Responsibilities reached COMPLETE <em>through</em> <code>acceptance_exit</code>; your mini-PCC journey map shows three cards in the Complete column; and your graph — decisions, findings, evidence, verdicts, sessions — tells the whole story to someone who wasn't there. That someone is you, in six months.</p></div>
       <div class="callout war"><h4>Why it exists — the whole course in one paragraph</h4><p>Every mechanism you built is an answer to "what happens under pressure, at scale, with agents?" State machines because statuses <em>will</em> be skipped; server-minted IDs because parallel sessions <em>will</em> collide; contracts-as-schemas because "not built yet" <em>will</em> be used as an excuse; gates-with-evidence because "tests pass, trust me" <em>will</em> be claimed; hooks because rules that live in prose <em>will</em> be ignored — measurably, twice, before they became mechanical. DDE is engineering discipline compiled into infrastructure. Now you've compiled it yourself.</p></div>
@@ -3460,10 +3725,10 @@ func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
     <tr><td>Gates</td><td>3 gates, evidence, DoD-6 (W6)</td><td>22 seeded gates, scope-aware + variant-aware condition sets, evidence freshness, content validators with sentinel phrases, DoD-11/12</td></tr>
     <tr><td>Verdicts</td><td>4 reviewers, 2 scales, latest-wins (W6)</td><td>9-reviewer canonical enum with alias normalization, <code>finding_count_plausible</code> superficiality tripwire</td></tr>
     <tr><td>Hooks</td><td>Gate flag-file pair + precondition + pre-commit (W6)</td><td>~48 hooks across 8 events, sectioned pre-commit with ~25 sections, diff-scoped pre-push governance lint</td></tr>
-    <tr><td>Skills</td><td>mini-ideate, mini-promote (W7)</td><td>100+ skills; ideate→challenge→promote→design→build→accept, verify-or-mark graph writes, banner-schema'd DA questions</td></tr>
+    <tr><td>Skills</td><td>mini-ideate/promote (W7) + the W8–W9 estate: mini-backlog, -challenge, -scope-review, -dedup, -route, -orchestrate…; full 57-skill atlas in 9.4</td><td>100+ skills; ideate→challenge→promote→design→build→accept, verify-or-mark graph writes, banner-schema'd DA questions</td></tr>
     <tr><td>Sessions</td><td>assign/claim(CAS)/complete (W7)</td><td>Same + runner provenance, audit-marker enforcement, respstatus rollup on completion</td></tr>
     <tr><td>PCC</td><td>Next.js, 3 screens, poll (W7)</td><td>Vite/React 19, 11+ surfaces, REST + GraphQL dual plane, WebSocket cache invalidation, d3 choreography diagrams</td></tr>
-    <tr><td>The app itself</td><td>mini-C2C: 3 services + shell UI (W8)</td><td>C2C Ono: 5+ domains, ~60 services, AlloyDB/Spanner/Pub/Sub/Cloud Run, release trains</td></tr>
+    <tr><td>The app itself</td><td>mini-C2C: 3 services + shell UI (W10)</td><td>C2C Ono: 5+ domains, ~60 services, AlloyDB/Spanner/Pub/Sub/Cloud Run, release trains</td></tr>
   </table></div>
 
   <h3 class="sech">Node types (mini set)</h3>
@@ -3496,7 +3761,7 @@ func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
     <tr><td><code>DEPENDS_ON</code></td><td>WorkPackage → WorkPackage</td><td>explicit ordering (planner input)</td></tr>
     <tr><td><code>WORKS_ON</code></td><td>AgentSession → Responsibility/WP</td><td>who's on it</td></tr>
     <tr><td><code>VERDICT_FOR</code></td><td>Verdict → Responsibility</td><td>review output</td></tr>
-    <tr><td><code>DEFINES</code></td><td>Contract → Event</td><td>which contract governs which event (minted in 8.1)</td></tr>
+    <tr><td><code>DEFINES</code></td><td>Contract → Event</td><td>which contract governs which event (minted in 10.1)</td></tr>
     <tr><td><code>PROMOTES_TO</code></td><td>CIR → Decision</td><td>ideation lineage</td></tr>
     <tr><td><code>SUPERSEDES</code></td><td>Decision → Decision</td><td>record replacement (symmetric with file pointers)</td></tr>
     <tr><td><code>BLOCKS</code></td><td>ExternalDependency → Finding</td><td>the deferral authorization</td></tr>
@@ -3518,7 +3783,7 @@ func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
   <h3 class="sech">Reading list into the real system (in this order)</h3>
   <div class="tablewrap"><table>
     <tr><th>#</th><th>Read</th><th>Because</th></tr>
-    <tr><td>1</td><td><code>docs/governance-framework.md</code></td><td>the whole framework — read before week 1 and again after week 8</td></tr>
+    <tr><td>1</td><td><code>docs/governance-framework.md</code></td><td>the whole framework — read before week 1 and again after week 10</td></tr>
     <tr><td>2</td><td><code>CLAUDE.md</code> (root)</td><td>the operational map: stack, lifecycle, skills, layout</td></tr>
     <tr><td>3</td><td><code>.claude/rules/bld-knowledge-graph-first.md</code> + <code>bld-graph-edge-contracts.md</code></td><td>the graph discipline you cloned in weeks 1–2</td></tr>
     <tr><td>4</td><td><code>builder/server/internal/graph/model.go</code></td><td>the full schema — skim the transition maps and edge constants</td></tr>
@@ -3547,7 +3812,7 @@ func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
   </ul>
 </section>
 <footer style="margin-top:60px;padding-top:18px;border-top:1px solid var(--line);font-size:12px;color:var(--faint)">
-  <p>Build Your Own Nexus — an 8-week course on mastering Nexus DDE by rebuilding it small, grounded in the <code>C2C_Ono_AIR310054</code> repo. Progress is saved in this browser only.</p>
+  <p>Build Your Own Nexus — a 10-week course on mastering Nexus DDE by rebuilding it small, grounded in the <code>C2C_Ono_AIR310054</code> repo. Progress is saved in this browser only.</p>
 </footer>
 </main>
 </div>
@@ -3556,7 +3821,7 @@ func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
 <script>
 (function(){
   "use strict";
-  var VIEWS = ["overview","week1","week2","week3","week4","week5","week6","week7","week8","reference"];
+  var VIEWS = ["overview","week1","week2","week3","week4","week5","week6","week7","week8","week9","week10","reference"];
   var LS_KEY = "byon-progress-v1";
 
   /* ---------- storage (always guarded) ---------- */
@@ -3625,7 +3890,7 @@ func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
   function route(){
     var hash = (location.hash || "#overview").slice(1);
     // deep link to a lesson: #l42 → week4, open the lesson
-    var m = /^l(\d)(\d)$/.exec(hash);
+    var m = /^l(\d{1,2})(\d)$/.exec(hash);
     if (m){
       var lesson = document.getElementById(hash);
       if (lesson){

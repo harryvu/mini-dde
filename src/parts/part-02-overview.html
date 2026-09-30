@@ -5,15 +5,15 @@
     <h1>Master Nexus DDE by building a small one.</h1>
     <p class="tagline">Nexus DDE is the C2C program's <b>decision-driven engineering</b> platform: a knowledge graph that is the source of truth, a governed mutation layer, an MCP tool surface agents build through, and a staged delivery pipeline with mechanical gates. The fastest way to master it is to rebuild its essential machinery at 1/100th scale — then use your clone to ship a real app the way the real system ships C2C.</p>
     <div class="statrow">
-      <div class="stat"><b>8</b><span>weeks, ~8–12 h each</span></div>
-      <div class="stat"><b>32</b><span>lessons, 1 concept each</span></div>
+      <div class="stat"><b>10</b><span>weeks, ~8–12 h each</span></div>
+      <div class="stat"><b>40</b><span>lessons, 1 concept each</span></div>
       <div class="stat"><b>Go + Memgraph</b><span>mini-DDE server</span></div>
       <div class="stat"><b>Next.js</b><span>mini-PCC + capstone UI</span></div>
       <div class="stat"><b>mini-C2C</b><span>capstone: booking → billing → collections</span></div>
     </div>
   </div>
 
-  <h3 class="sech">What you will have built by week 8</h3>
+  <h3 class="sech">What you will have built by week 10</h3>
   <div class="diagram">
     <div class="flowrow">
       <div class="fbox"><b>Claude Code</b><span>agents + skills + hooks</span></div>
@@ -38,13 +38,13 @@
     <li><b>Tasks</b> — step-by-step instructions with the code that matters written out in full.</li>
     <li><b>Checkpoint</b> <span class="chip ok">✓</span> — a concrete "you are done when…" you can verify mechanically, in the spirit of the system you're cloning: <em>verify, don't assume</em>.</li>
   </ul>
-  <p>Lessons build strictly on each other — the state machine you write in week 2 guards the statuses week 6's gates protect; the wave planner from week 5 orders the services you build in week 8. Don't skip.</p>
+  <p>Lessons build strictly on each other — the state machine you write in week 2 guards the statuses week 6's gates protect; the wave planner from week 5 orders the services you build in week 10. Don't skip.</p>
 
   <div class="callout note">
     <h4>Prerequisites &amp; setup (do this before week 1)</h4>
     <ul>
       <li>Comfortable-ish with Go basics and one JS framework; everything else is taught in place.</li>
-      <li>Install: Go ≥ 1.22, Node ≥ 20, git, Docker (from week 1 — Memgraph runs in a container), SQLite CLI (<code>sqlite3</code>, for the week-8 capstone services' own data), Claude Code (week 4 on).</li>
+      <li>Install: Go ≥ 1.22, Node ≥ 20, git, Docker (from week 1 — Memgraph runs in a container), SQLite CLI (<code>sqlite3</code>, for the week-10 capstone services' own data), Claude Code (week 4 on).</li>
       <li>Clone access to the real repo (<code>C2C_Ono_AIR310054</code>) for the "in the real system" cross-reads — read-only is fine.</li>
       <li>Create your workspace: <code>mkdir mini-dde &amp;&amp; cd mini-dde &amp;&amp; git init</code>. All paths in the course are relative to this root.</li>
     </ul>
@@ -54,14 +54,14 @@
   <p>The real system moves every piece of work through a numbered lifecycle. The course builds the machinery in dependency order, then the capstone walks one real feature through all of it:</p>
   <div class="diagram">
     <div class="pipe">
-      <div class="pstage"><span class="pn">pre-0</span><b>Ideate → Promote</b><span>CIR → challenge → xDR</span><span class="pw">W3 · W7</span></div>
-      <div class="pstage"><span class="pn">0</span><b>Strategic design</b><span>human + AI brief</span><span class="pw">W8</span></div>
-      <div class="pstage"><span class="pn">1–2</span><b>Autonomous design</b><span>SDD + review + converge</span><span class="pw">W8</span></div>
+      <div class="pstage"><span class="pn">pre-0</span><b>Ideate → Promote</b><span>CIR → challenge → xDR</span><span class="pw">W3 · W7 · W8</span></div>
+      <div class="pstage"><span class="pn">0</span><b>Strategic design</b><span>human + AI brief</span><span class="pw">W8 · W10</span></div>
+      <div class="pstage"><span class="pn">1–2</span><b>Autonomous design</b><span>SDD + review + converge</span><span class="pw">W8 · W10</span></div>
       <div class="pstage"><span class="pn">3</span><b>Task generation</b><span>work packages + waves</span><span class="pw">W5</span></div>
-      <div class="pstage"><span class="pn">4</span><b>Foundation</b><span>shared types, mocks, infra</span><span class="pw">W8</span></div>
-      <div class="pstage"><span class="pn">5</span><b>Autonomous build</b><span>build to contracts</span><span class="pw">W8</span></div>
-      <div class="pstage"><span class="pn">6</span><b>Integration verify</b><span>mock → real, wave order</span><span class="pw">W8</span></div>
-      <div class="pstage"><span class="pn">7</span><b>Acceptance</b><span>gates, DoD, verdicts</span><span class="pw">W6 · W8</span></div>
+      <div class="pstage"><span class="pn">4</span><b>Foundation</b><span>shared types, mocks, infra</span><span class="pw">W9 · W10</span></div>
+      <div class="pstage"><span class="pn">5</span><b>Autonomous build</b><span>build to contracts</span><span class="pw">W9 · W10</span></div>
+      <div class="pstage"><span class="pn">6</span><b>Integration verify</b><span>mock → real, wave order</span><span class="pw">W9 · W10</span></div>
+      <div class="pstage"><span class="pn">7</span><b>Acceptance</b><span>gates, DoD, verdicts</span><span class="pw">W6 · W9 · W10</span></div>
     </div>
     <p class="dcap">stages per CLAUDE.md § "Process — Nexus DDE 8-stage lifecycle" · the W-tags show where this course builds each piece</p>
   </div>
@@ -75,7 +75,9 @@
     <a class="wkcard" href="#week5"><span class="wknum">WEEK 5</span><b>Contracts &amp; waves</b><p>Contracts carry schemas; PRODUCES/CONSUMES choreography <em>is</em> the dependency model; Kahn's algorithm turns it into parallel build waves; context packages feed builders.</p><span class="wkmeta">JSON Schema · validate_schema · compute_wave_plan</span></a>
     <a class="wkcard" href="#week6"><span class="wknum">WEEK 6</span><b>Gates &amp; enforcement</b><p>Named exit criteria with machine-checkable evidence, reviewer verdicts, the Definition of Done — and Claude Code hooks that make skipping impossible.</p><span class="wkmeta">check_gate · gate evidence · DoD · exit-2 hooks</span></a>
     <a class="wkcard" href="#week7"><span class="wknum">WEEK 7</span><b>Pipeline &amp; mini-PCC</b><p>Skills encode process as executable documents; agent sessions claim work atomically; a Next.js Process Control Center renders it all — the server derives, the UI projects.</p><span class="wkmeta">SKILL.md · claim_work · /api/pipeline · journey map</span></a>
-    <a class="wkcard" href="#week8"><span class="wknum">WEEK 8</span><b>Capstone: mini-C2C</b><p>Use your mini-DDE end to end: ideate → promote → contracts → waves → build three event-driven Go services and a C2C-shell Next.js frontend → gates → COMPLETE.</p><span class="wkmeta">booking → billing → collections · outbox · lifecycle spine</span></a>
+    <a class="wkcard" href="#week8"><span class="wknum">WEEK 8</span><b>Skills I: idea → design</b><p>The skill estate, first half: the full ideation funnel (ideate → challenge → promote → scope-review → backlog), the design chain (strategic → autonomous → review), and the findings machinery that keeps a live graph honest.</p><span class="wkmeta">bld-ideate → bld-promote · SDD chain · dedup/route/dispose</span></a>
+    <a class="wkcard" href="#week9"><span class="wknum">WEEK 9</span><b>Skills II: build → operate</b><p>Second half: the build phase machine, the test estate, ship-and-accept (integration verify → acceptance), and the fleet-operations skills — plus the full 57-skill atlas, mapped.</p><span class="wkmeta">autonomous-build A–G · test estate · orchestrate · atlas</span></a>
+    <a class="wkcard" href="#week10"><span class="wknum">WEEK 10</span><b>Capstone: mini-C2C</b><p>Use your mini-DDE end to end: ideate → promote → contracts → waves → build three event-driven Go services and a C2C-shell Next.js frontend → gates → COMPLETE.</p><span class="wkmeta">booking → billing → collections · outbox · lifecycle spine</span></a>
   </div>
 
   <h3 class="sech">Ground rules (borrowed from the system you're cloning)</h3>
