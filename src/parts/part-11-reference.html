@@ -9,9 +9,9 @@
   <h3 class="sech">Mini-DDE ↔ real Nexus DDE</h3>
   <div class="tablewrap"><table>
     <tr><th>Piece</th><th>Your mini (week)</th><th>The real thing</th></tr>
-    <tr><td>Graph store</td><td>Go + SQLite, ~14 node types (W1)</td><td>Neo4j via <code>neo4j-go-driver</code>, 63 node + 63 edge types, hand-written Cypher, project-scoped store (<code>builder/server/internal/graph/</code>)</td></tr>
+    <tr><td>Graph store</td><td>Go + Memgraph via <code>neo4j-go-driver/v5</code> — hand-written Cypher, ~15 node types (W1)</td><td>Neo4j via <code>neo4j-go-driver/v6</code>, 63 node + 63 edge types, hand-written Cypher, project-scoped store (<code>builder/server/internal/graph/</code>)</td></tr>
     <tr><td>Status machines</td><td>4 transition maps + <code>UpdateStatus</code> (W2)</td><td>9+ maps in <code>model.go</code>, multi-label atomic writes, changelog + events, derived-status refusals (<code>outcome_status_is_derived</code>)</td></tr>
-    <tr><td>ID allocation</td><td><code>DeriveSlug</code> + Crockford suffix, atomic INSERT (W2)</td><td>Atomic Cypher MERGE allocator + reserve/redeem lifecycle with tombstones and reapers (Builder ADR-atomic-id-allocator-H37G)</td></tr>
+    <tr><td>ID allocation</td><td><code>DeriveSlug</code> + Crockford suffix, atomic MERGE with ON-CREATE marker (W2)</td><td>The same atomic-MERGE trick + reserve/redeem lifecycle with tombstones and reapers (Builder ADR-atomic-id-allocator-H37G)</td></tr>
     <tr><td>Decision records</td><td>5 templates, dual-homing, supersession, lint (W3)</td><td>Format A + corpus manifest across 4 tiers, citation-symmetry lint, compliance-claims lint, untracked-record Stop hook</td></tr>
     <tr><td>Findings</td><td>Field contract + AFFECTS/FOUND_IN + rollback (W3)</td><td>19-value classification taxonomy, scope axis, evidence-gated resolve (C99G), routing, reservation flow</td></tr>
     <tr><td>MCP server</td><td>mcp-go, ~20 tools, one registry (W4)</td><td>110 tools, stdio + streamable HTTP, fast-fail health cache, in-flight semaphore, failure observation</td></tr>
@@ -57,6 +57,7 @@
     <tr><td><code>DEPENDS_ON</code></td><td>WorkPackage → WorkPackage</td><td>explicit ordering (planner input)</td></tr>
     <tr><td><code>WORKS_ON</code></td><td>AgentSession → Responsibility/WP</td><td>who's on it</td></tr>
     <tr><td><code>VERDICT_FOR</code></td><td>Verdict → Responsibility</td><td>review output</td></tr>
+    <tr><td><code>DEFINES</code></td><td>Contract → Event</td><td>which contract governs which event (minted in 8.1)</td></tr>
     <tr><td><code>PROMOTES_TO</code></td><td>CIR → Decision</td><td>ideation lineage</td></tr>
     <tr><td><code>SUPERSEDES</code></td><td>Decision → Decision</td><td>record replacement (symmetric with file pointers)</td></tr>
     <tr><td><code>BLOCKS</code></td><td>ExternalDependency → Finding</td><td>the deferral authorization</td></tr>

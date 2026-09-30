@@ -7,7 +7,7 @@
     <div class="statrow">
       <div class="stat"><b>8</b><span>weeks, ~8–12 h each</span></div>
       <div class="stat"><b>32</b><span>lessons, 1 concept each</span></div>
-      <div class="stat"><b>Go + SQLite</b><span>mini-DDE server</span></div>
+      <div class="stat"><b>Go + Memgraph</b><span>mini-DDE server</span></div>
       <div class="stat"><b>Next.js</b><span>mini-PCC + capstone UI</span></div>
       <div class="stat"><b>mini-C2C</b><span>capstone: booking → billing → collections</span></div>
     </div>
@@ -18,7 +18,7 @@
     <div class="flowrow">
       <div class="fbox"><b>Claude Code</b><span>agents + skills + hooks</span></div>
       <div class="farrow">→</div>
-      <div class="fbox hot"><b>mini-DDE server</b><span>Go · SQLite · MCP tools<br>graph · gates · waves</span></div>
+      <div class="fbox hot"><b>mini-DDE server</b><span>Go · Memgraph · MCP tools<br>graph · gates · waves</span></div>
       <div class="farrow">→</div>
       <div class="fbox"><b>mini-PCC</b><span>Next.js journey map,<br>findings console</span></div>
     </div>
@@ -44,7 +44,7 @@
     <h4>Prerequisites &amp; setup (do this before week 1)</h4>
     <ul>
       <li>Comfortable-ish with Go basics and one JS framework; everything else is taught in place.</li>
-      <li>Install: Go ≥ 1.22, Node ≥ 20, git, SQLite CLI (<code>sqlite3</code>), Docker (weeks 7–8), Claude Code (week 4 on).</li>
+      <li>Install: Go ≥ 1.22, Node ≥ 20, git, Docker (from week 1 — Memgraph runs in a container), SQLite CLI (<code>sqlite3</code>, for the week-8 capstone services' own data), Claude Code (week 4 on).</li>
       <li>Clone access to the real repo (<code>C2C_Ono_AIR310054</code>) for the "in the real system" cross-reads — read-only is fine.</li>
       <li>Create your workspace: <code>mkdir mini-dde &amp;&amp; cd mini-dde &amp;&amp; git init</code>. All paths in the course are relative to this root.</li>
     </ul>
@@ -68,7 +68,7 @@
 
   <h3 class="sech">The weeks</h3>
   <div class="wkcards">
-    <a class="wkcard" href="#week1"><span class="wknum">WEEK 1</span><b>The graph is the truth</b><p>Why DDE puts a knowledge graph — not documents, not tickets — at the center. Build the node/edge store in Go + SQLite and a CLI to talk to it.</p><span class="wkmeta">nodes · edges · project scoping · CLI</span></a>
+    <a class="wkcard" href="#week1"><span class="wknum">WEEK 1</span><b>The graph is the truth</b><p>Why DDE puts a knowledge graph — not documents, not tickets — at the center. Build the node/edge store in Go on Memgraph (Cypher over Bolt, the real system's stack) and a CLI to talk to it.</p><span class="wkmeta">nodes · edges · Cypher · project scoping · CLI</span></a>
     <a class="wkcard" href="#week2"><span class="wknum">WEEK 2</span><b>Governed mutation</b><p>Nothing mutates without a rule. Status state machines, content-addressed IDs, required edges, and validator chains at the write boundary.</p><span class="wkmeta">update_status · allocator · edge contracts · validators</span></a>
     <a class="wkcard" href="#week3"><span class="wknum">WEEK 3</span><b>Decisions &amp; findings</b><p>The authority chain: xDR records on disk, mirrored as graph nodes, supersession, governance lint — and findings/escalations as the graph's memory of open questions.</p><span class="wkmeta">ADR/PDR/DDR/WoW/CIR · GOVERNED_BY · register_finding</span></a>
     <a class="wkcard" href="#week4"><span class="wknum">WEEK 4</span><b>The MCP server</b><p>Tools are the agent interface. Wrap your graph in an MCP server, wire Claude Code to it, and adopt the graph-first working discipline.</p><span class="wkmeta">mcp-go · tool registry · .mcp.json · hooks</span></a>

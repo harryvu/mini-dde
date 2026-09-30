@@ -29,6 +29,7 @@
           <div class="code" data-file><span class="fname">server/internal/graph/schema.go</span><pre><code>package graph
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -83,10 +84,10 @@ func ValidateAgainst(schemaJSON string, payload []byte) (bool, []SchemaError, er
 
 func anyToStrings(in []string) []string { return in }
 
-// ValidateEventPayload: resolve the node (Event first, Contract
+// ValidateEventPayload: resolve the node (Contract first, Event
 // fallback — the query_contract order), pick its schema, validate.
-func (s *Store) ValidateEventPayload(id string, payload []byte) (bool, []SchemaError, error) {
-	n, err := s.GetNode(id)
+func (s *Store) ValidateEventPayload(ctx context.Context, id string, payload []byte) (bool, []SchemaError, error) {
+	n, err := s.GetNode(ctx, id)
 	if err != nil {
 		return false, nil, err
 	}
@@ -129,78 +130,87 @@ func (s *Store) ValidateEventPayload(id string, payload []byte) (bool, []SchemaE
 $M link --src booking-core     --dst evt-contract-booked --type PRODUCES
 $M link --src billing-core     --dst evt-contract-booked --type CONSUMES
 $M link --src collections-core --dst evt-contract-booked --type CONSUMES</code></pre></div>
-          <p>Add the remaining capstone events now (schemas can start minimal and tighten in week 8): <code>evt-invoice-issued</code> (billing → collections, booking), <code>evt-receivable-settled</code> (collections → billing, booking), <code>evt-contract-closed</code> (booking → all).</p></li>
+          <p>Create the remaining capstone event <em>nodes</em> now — <code>evt-booking-completed</code>, <code>evt-invoice-issued</code>, <code>evt-receivable-settled</code>, <code>evt-contract-closed</code> (schemas can start minimal; week 8 tightens all five) — but wire <b>no further PRODUCES/CONSUMES edges yet</b>. The rest of the choreography goes in during 5.3, where it teaches the planner's sharpest lesson.</p></li>
         <li><p><strong>Give each Responsibility work packages</strong> with a <code>sequence</code> prop — booking: <code>wp-book-api</code> (1), <code>wp-book-events</code> (2); billing: <code>wp-bill-consume</code> (1), <code>wp-bill-issue</code> (2); collections: <code>wp-col-consume</code> (1), <code>wp-col-settle</code> (2). Each <code>BELONGS_TO</code> its Responsibility.</p></li>
         <li><p><strong>Derive choreography dependencies in code</strong> — the heart of this lesson:</p>
           <div class="code" data-file><span class="fname">server/internal/graph/choreography.go</span><pre><code>package graph
 
-import "sort"
+import (
+	"context"
+	"sort"
+
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
+)
+
+// seqOf normalizes the sequence property: JSON hands you float64,
+// Bolt hands you int64 — never assert one blindly.
+func seqOf(n Node) int64 {
+	switch v := n.Props["sequence"].(type) {
+	case int64:
+		return v
+	case float64:
+		return int64(v)
+	}
+	return 0
+}
 
 // wpsOf returns a responsibility's WorkPackages ordered by sequence
 // (id tie-break) — determinism matters: identical graphs must yield
 // identical plans.
-func (s *Store) wpsOf(respID string) ([]Node, error) {
-	edges, err := s.Neighbors(respID, "in", EdgeBelongsTo)
+func (s *Store) wpsOf(ctx context.Context, respID string) ([]Node, error) {
+	edges, err := s.Neighbors(ctx, respID, "in", EdgeBelongsTo)
 	if err != nil {
 		return nil, err
 	}
 	var wps []Node
 	for _, e := range edges {
-		n, err := s.GetNode(e.Src)
+		n, err := s.GetNode(ctx, e.Src)
 		if err != nil {
 			return nil, err
 		}
 		wps = append(wps, n)
 	}
 	sort.Slice(wps, func(i, j int) bool {
-		si, _ := wps[i].Props["sequence"].(float64)
-		sj, _ := wps[j].Props["sequence"].(float64)
-		if si != sj {
-			return si &lt; sj
+		if seqOf(wps[i]) != seqOf(wps[j]) {
+			return seqOf(wps[i]) &lt; seqOf(wps[j])
 		}
 		return wps[i].ID &lt; wps[j].ID
 	})
 	return wps, nil
 }
 
-// ChoreographyDeps derives WP→WP dependencies from PRODUCES/CONSUMES:
-// for each event, each consumer's FIRST wp depends on each producer's
+// ChoreographyDeps derives WP→WP dependencies from PRODUCES/CONSUMES.
+// The MATCH below is the real wave planner's pattern VERBATIM
+// (builder/server/internal/graph/wave.go:167-169) — one line of
+// Cypher expressing "consumer depends on producer through an event".
+// For each pair: the consumer's FIRST wp depends on the producer's
 // LAST wp.
-func (s *Store) ChoreographyDeps() (map[string][]string, error) {
-	deps := map[string][]string{} // wp → the wps it depends on
-	events, err := s.QueryAll("Event", "")
+func (s *Store) ChoreographyDeps(ctx context.Context) (map[string][]string, error) {
+	res, err := s.run(ctx, `
+		MATCH (producer:Responsibility)-[:PRODUCES]-&gt;(e:Event)&lt;-[:CONSUMES]-(consumer:Responsibility)
+		WHERE producer.project_id = $pid AND consumer.project_id = $pid
+		  AND producer.id &lt;&gt; consumer.id
+		RETURN DISTINCT producer.id AS p, consumer.id AS c`, nil)
 	if err != nil {
 		return nil, err
 	}
-	for _, evt := range events {
-		producers, err := s.Neighbors(evt.ID, "in", EdgeProduces)
+	deps := map[string][]string{} // wp → the wps it depends on
+	for _, rec := range res.Records {
+		p, _, _ := neo4j.GetRecordValue[string](rec, "p")
+		c, _, _ := neo4j.GetRecordValue[string](rec, "c")
+		pWPs, err := s.wpsOf(ctx, p)
 		if err != nil {
 			return nil, err
 		}
-		consumers, err := s.Neighbors(evt.ID, "in", EdgeConsumes)
+		cWPs, err := s.wpsOf(ctx, c)
 		if err != nil {
 			return nil, err
 		}
-		for _, c := range consumers {
-			for _, p := range producers {
-				if c.Src == p.Src {
-					continue // self-loops never count
-				}
-				pWPs, err := s.wpsOf(p.Src)
-				if err != nil {
-					return nil, err
-				}
-				cWPs, err := s.wpsOf(c.Src)
-				if err != nil {
-					return nil, err
-				}
-				if len(pWPs) == 0 || len(cWPs) == 0 {
-					continue
-				}
-				first, last := cWPs[0].ID, pWPs[len(pWPs)-1].ID
-				deps[first] = append(deps[first], last)
-			}
+		if len(pWPs) == 0 || len(cWPs) == 0 {
+			continue
 		}
+		first, last := cWPs[0].ID, pWPs[len(pWPs)-1].ID
+		deps[first] = append(deps[first], last)
 	}
 	return deps, nil
 }</code></pre></div></li>
@@ -224,6 +234,7 @@ func (s *Store) ChoreographyDeps() (map[string][]string, error) {
           <div class="code" data-file><span class="fname">server/internal/graph/wave.go</span><pre><code>package graph
 
 import (
+	"context"
 	"fmt"
 	"sort"
 )
@@ -240,8 +251,8 @@ type WavePlan struct {
 	Cycles         []string `json:"cycles,omitempty"`
 }
 
-func (s *Store) ComputeWavePlan() (WavePlan, error) {
-	wps, err := s.QueryAll("WorkPackage", "")
+func (s *Store) ComputeWavePlan(ctx context.Context) (WavePlan, error) {
+	wps, err := s.QueryAll(ctx, "WorkPackage", "")
 	if err != nil {
 		return WavePlan{}, err
 	}
@@ -258,7 +269,7 @@ func (s *Store) ComputeWavePlan() (WavePlan, error) {
 
 	// Source 1: explicit DEPENDS_ON edges.
 	for _, wp := range wps {
-		out, err := s.Neighbors(wp.ID, "out", EdgeDependsOn)
+		out, err := s.Neighbors(ctx, wp.ID, "out", EdgeDependsOn)
 		if err != nil {
 			return WavePlan{}, err
 		}
@@ -267,7 +278,7 @@ func (s *Store) ComputeWavePlan() (WavePlan, error) {
 		}
 	}
 	// Source 2: choreography (lesson 5.2).
-	choreo, err := s.ChoreographyDeps()
+	choreo, err := s.ChoreographyDeps(ctx)
 	if err != nil {
 		return WavePlan{}, err
 	}
@@ -277,12 +288,12 @@ func (s *Store) ComputeWavePlan() (WavePlan, error) {
 		}
 	}
 	// Source 3: implicit sequence within each Responsibility.
-	resps, err := s.QueryAll("Responsibility", "")
+	resps, err := s.QueryAll(ctx, "Responsibility", "")
 	if err != nil {
 		return WavePlan{}, err
 	}
 	for _, r := range resps {
-		seq, err := s.wpsOf(r.ID)
+		seq, err := s.wpsOf(ctx, r.ID)
 		if err != nil {
 			return WavePlan{}, err
 		}
@@ -355,14 +366,14 @@ func (s *Store) ComputeWavePlan() (WavePlan, error) {
 		}
 		plan.Waves = append(plan.Waves, Wave{Number: w, WorkPackages: byWave[w]})
 		for _, wp := range byWave[w] {
-			s.UpdateNode(wp, map[string]any{"wave": w})
+			s.UpdateNode(ctx, wp, map[string]any{"wave": w})
 		}
 	}
 	plan.TotalWaves, plan.MaxParallelism = maxW, maxPar
 	return plan, nil
 }</code></pre></div></li>
         <li><p><strong>Expose it as the <code>compute_wave_plan</code> tool</strong> and run it on the capstone graph. Expected shape: wave 1 = <code>wp-book-api</code>; wave 2 = <code>wp-book-events</code>; wave 3 = the two consume-WPs <em>in parallel</em>; wave 4 = <code>wp-bill-issue</code>, <code>wp-col-settle</code>. Draw it on paper first, then compare.</p></li>
-        <li><p><strong>Manufacture a cycle</strong> — <code>link --src wp-book-api --dst wp-col-settle --type DEPENDS_ON</code> — and re-run. You must get the loud error naming the members, and (assert!) no <code>wave</code> props were written. Remove the edge; plan returns.</p></li>
+        <li><p><strong>Hit a real cycle — then understand it.</strong> Wire the rest of the runtime choreography exactly as mini-C2C will run it: billing <code>PRODUCES evt-invoice-issued</code>, consumed by collections <em>and</em> booking; collections <code>PRODUCES evt-receivable-settled</code>, consumed by billing <em>and</em> booking. Re-run the planner: <code>dependency_cycle</code> naming <b>all six WPs</b> — and (assert!) no <code>wave</code> props were written. Nothing is wrong with the runtime design: services legitimately consume each other's events in a loop (issue → settle → mark paid). What cycled is the <em>coarsening</em>: <code>ChoreographyDeps</code> turns "consumes at runtime" into "builds after", and first-WP-on-last-WP cannot tell a feedback loop from a build dependency. Under contracts-as-truth (5.1) no consumer ever needs a <em>built</em> producer — it builds against the schema, with mocks — so keep choreography-derived build order to the one signal every service genuinely starts from: <code>evt-contract-booked</code>. Delete the four CONSUMES edges you just added (keep both PRODUCES — ownership is true and acyclic); the plan returns. The full consumption picture re-enters the graph in 8.4, when integration reconciles edges to what the system actually does — after wave planning has served its purpose. (The real planner lives with the same coarsening plus an escape hatch — a sequential edge that would close a cycle is skipped; re-read this lesson's callout with new eyes.)</p></li>
         <li><p><strong>Determinism test:</strong> run the planner 5 times; byte-identical JSON every time. If not, you missed a <code>sort</code>.</p></li>
       </ol>
       <div class="callout check"><h4>Checkpoint</h4><p>The capstone plan matches your drawing; max parallelism is 2 (the week-8 promise: billing and collections build simultaneously); cycles refuse loudly and persist nothing; output is deterministic.</p></div>
@@ -382,7 +393,10 @@ func (s *Store) ComputeWavePlan() (WavePlan, error) {
         <li><p><strong>Define the package and assemble it:</strong></p>
           <div class="code" data-file><span class="fname">server/internal/graph/context.go</span><pre><code>package graph
 
-import "os"
+import (
+	"context"
+	"os"
+)
 
 type ContextPackage struct {
 	Responsibility Node   `json:"responsibility"`
@@ -394,9 +408,9 @@ type ContextPackage struct {
 	WorkPackages   []Node `json:"work_packages"`
 }
 
-func (s *Store) AssembleContext(respID string) (ContextPackage, error) {
+func (s *Store) AssembleContext(ctx context.Context, respID string) (ContextPackage, error) {
 	var pkg ContextPackage
-	resp, err := s.GetNode(respID)
+	resp, err := s.GetNode(ctx, respID)
 	if err != nil {
 		return pkg, err
 	}
@@ -404,9 +418,9 @@ func (s *Store) AssembleContext(respID string) (ContextPackage, error) {
 
 	// Specification: follow DOCUMENTED_BY to a Document, read its
 	// path from disk — the one intentional full-text copy.
-	docs, _ := s.Neighbors(respID, "out", EdgeDocumentedBy)
+	docs, _ := s.Neighbors(ctx, respID, "out", EdgeDocumentedBy)
 	for _, e := range docs {
-		d, err := s.GetNode(e.Dst)
+		d, err := s.GetNode(ctx, e.Dst)
 		if err != nil {
 			continue
 		}
@@ -420,13 +434,13 @@ func (s *Store) AssembleContext(respID string) (ContextPackage, error) {
 
 	collect := func(dir, edgeType string) []Node {
 		var out []Node
-		edges, _ := s.Neighbors(respID, dir, edgeType)
+		edges, _ := s.Neighbors(ctx, respID, dir, edgeType)
 		for _, e := range edges {
 			other := e.Dst
 			if dir == "in" {
 				other = e.Src
 			}
-			if n, err := s.GetNode(other); err == nil {
+			if n, err := s.GetNode(ctx, other); err == nil {
 				out = append(out, n)
 			}
 		}

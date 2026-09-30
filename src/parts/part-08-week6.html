@@ -26,7 +26,10 @@
         <li><p><strong>Define gates and conditions in code:</strong></p>
           <div class="code" data-file><span class="fname">server/internal/graph/gates.go</span><pre><code>package graph
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 type GateCondition struct {
 	Check            string `json:"check"`
@@ -63,49 +66,49 @@ var GateDefinitions = map[string][]GateCondition{
 }
 
 // Simple checks: computed from the graph, no evidence involved.
-var simpleChecks = map[string]func(s *Store, respID string) (bool, string){
-	"has_specification": func(s *Store, id string) (bool, string) {
-		edges, _ := s.Neighbors(id, "out", EdgeDocumentedBy)
+var simpleChecks = map[string]func(ctx context.Context, s *Store, respID string) (bool, string){
+	"has_specification": func(ctx context.Context, s *Store, id string) (bool, string) {
+		edges, _ := s.Neighbors(ctx, id, "out", EdgeDocumentedBy)
 		if len(edges) == 0 {
 			return false, "no DOCUMENTED_BY edge to a specification"
 		}
 		return true, ""
 	},
-	"work_packages_registered": func(s *Store, id string) (bool, string) {
-		edges, _ := s.Neighbors(id, "in", EdgeBelongsTo)
+	"work_packages_registered": func(ctx context.Context, s *Store, id string) (bool, string) {
+		edges, _ := s.Neighbors(ctx, id, "in", EdgeBelongsTo)
 		if len(edges) == 0 {
 			return false, "no work packages BELONGS_TO this responsibility"
 		}
 		return true, ""
 	},
-	"all_wps_complete": func(s *Store, id string) (bool, string) {
-		edges, _ := s.Neighbors(id, "in", EdgeBelongsTo)
+	"all_wps_complete": func(ctx context.Context, s *Store, id string) (bool, string) {
+		edges, _ := s.Neighbors(ctx, id, "in", EdgeBelongsTo)
 		for _, e := range edges {
-			wp, err := s.GetNode(e.Src)
+			wp, err := s.GetNode(ctx, e.Src)
 			if err != nil || wp.Status != "COMPLETE" {
 				return false, e.Src + " is not COMPLETE"
 			}
 		}
 		return true, ""
 	},
-	"all_findings_terminal": func(s *Store, id string) (bool, string) {
+	"all_findings_terminal": func(ctx context.Context, s *Store, id string) (bool, string) {
 		terminal := map[string]bool{"RESOLVED": true, "CONFIRMED": true,
 			"REJECTED": true, "DEFERRED": true}
-		edges, _ := s.Neighbors(id, "in", EdgeAffects)
+		edges, _ := s.Neighbors(ctx, id, "in", EdgeAffects)
 		for _, e := range edges {
-			f, err := s.GetNode(e.Src)
+			f, err := s.GetNode(ctx, e.Src)
 			if err == nil &amp;&amp; f.Type == "Finding" &amp;&amp; !terminal[f.Status] {
 				return false, e.Src + " is " + f.Status
 			}
 		}
 		return true, ""
 	},
-	"no_internal_deferrals": func(s *Store, id string) (bool, string) {
-		edges, _ := s.Neighbors(id, "in", EdgeAffects)
+	"no_internal_deferrals": func(ctx context.Context, s *Store, id string) (bool, string) {
+		edges, _ := s.Neighbors(ctx, id, "in", EdgeAffects)
 		for _, e := range edges {
-			f, err := s.GetNode(e.Src)
+			f, err := s.GetNode(ctx, e.Src)
 			if err == nil &amp;&amp; f.Type == "Finding" &amp;&amp; f.Status == "DEFERRED" {
-				if ok, _ := s.CheckDeferral(f.ID); !ok {
+				if ok, _ := s.CheckDeferral(ctx, f.ID); !ok {
 					return false, f.ID + " is DEFERRED with no ExternalDependency BLOCKS edge"
 				}
 			}
@@ -115,7 +118,7 @@ var simpleChecks = map[string]func(s *Store, respID string) (bool, string){
 	// dod_complete and no_inadequate_verdicts land in 6.2 / 6.3.
 }
 
-func (s *Store) CheckGate(respID, gate string) (GateResult, error) {
+func (s *Store) CheckGate(ctx context.Context, respID, gate string) (GateResult, error) {
 	conds, ok := GateDefinitions[gate]
 	if !ok {
 		return GateResult{}, fmt.Errorf("unknown_gate: %q", gate)
@@ -125,9 +128,9 @@ func (s *Store) CheckGate(respID, gate string) (GateResult, error) {
 		var pass bool
 		var reason string
 		if c.EvidenceRequired {
-			pass, reason = s.latestEvidencePasses(respID, gate, c.Check)
+			pass, reason = s.latestEvidencePasses(ctx, respID, gate, c.Check)
 		} else if fn, ok := simpleChecks[c.Check]; ok {
-			pass, reason = fn(s, respID)
+			pass, reason = fn(ctx, s, respID)
 		} else {
 			pass, reason = false, "no checker registered for "+c.Check
 		}
@@ -164,12 +167,14 @@ func (s *Store) CheckGate(respID, gate string) (GateResult, error) {
           <div class="code" data-file><span class="fname">server/internal/graph/evidence.go</span><pre><code>package graph
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
-func (s *Store) SubmitGateEvidence(respID, gate, check, content string, pass bool) (string, error) {
+func (s *Store) SubmitGateEvidence(ctx context.Context, respID, gate, check, content string, pass bool) (string, error) {
 	conds, ok := GateDefinitions[gate]
 	if !ok {
 		return "", fmt.Errorf("unknown_gate: %q", gate)
@@ -190,7 +195,7 @@ func (s *Store) SubmitGateEvidence(respID, gate, check, content string, pass boo
 			"actual output, not an essay and not 'done'")
 	}
 	id := "evidence-" + uuid.NewString()
-	err := s.CreateNode(Node{ID: id, Type: "GateEvidence",
+	err := s.CreateNode(ctx, Node{ID: id, Type: "GateEvidence",
 		Props: map[string]any{
 			"responsibility_id": respID, "gate": gate, "check": check,
 			"content": content, "pass": pass,
@@ -198,35 +203,30 @@ func (s *Store) SubmitGateEvidence(respID, gate, check, content string, pass boo
 	return id, err
 }
 
-// latestEvidencePasses: the most recent evidence row for the tuple
+// latestEvidencePasses: the most recent evidence node for the tuple
 // decides. No evidence = fail (never "no news is good news").
-func (s *Store) latestEvidencePasses(respID, gate, check string) (bool, string) {
-	rows, err := s.db.Query(`
-		SELECT props FROM nodes
-		WHERE project_id = ? AND type = 'GateEvidence'
-		  AND json_extract(props,'$.responsibility_id') = ?
-		  AND json_extract(props,'$.gate') = ?
-		  AND json_extract(props,'$.check') = ?
-		ORDER BY created_at DESC, id DESC LIMIT 1`,
-		s.projectID, respID, gate, check)
+func (s *Store) latestEvidencePasses(ctx context.Context, respID, gate, check string) (bool, string) {
+	res, err := s.run(ctx, `
+		MATCH (e:GateEvidence {project_id: $pid})
+		WHERE e.responsibility_id = $rid AND e.gate = $gate AND e.check = $check
+		RETURN e.pass AS pass
+		ORDER BY e.created_at DESC, e.id DESC LIMIT 1`, map[string]any{
+		"rid": respID, "gate": gate, "check": check,
+	})
 	if err != nil {
 		return false, "evidence lookup failed: " + err.Error()
 	}
-	defer rows.Close()
-	if !rows.Next() {
+	if len(res.Records) == 0 {
 		return false, "no evidence submitted for " + check
 	}
-	var props string
-	rows.Scan(&amp;props)
-	n := Node{}
-	_ = jsonUnmarshal(props, &amp;n.Props) // tiny helper over encoding/json
-	if pass, _ := n.Props["pass"].(bool); pass {
+	pass, _, _ := neo4j.GetRecordValue[bool](res.Records[0], "pass")
+	if pass {
 		return true, ""
 	}
 	return false, "latest evidence for " + check + " is failing"
 }</code></pre></div>
-          <p>(<code>go get github.com/google/uuid</code>; GateEvidence ids are the one place a UUID is fine — evidence is append-only plumbing, not a cited artifact.)</p></li>
-        <li><p><strong>Implement the DoD.</strong> Six canonical items for the mini (the real list has 11/12): <code>application_code, unit_tests, contract_tests, integration_tests, observability, runbook</code>. Store as a JSON object on the Responsibility; <code>UpdateDoD(respID, item, verified)</code> rejects unknown keys <em>and returns the full valid list in the error</em> — the tool teaches its own vocabulary. Then register the <code>dod_complete</code> simple check: every canonical key true.</p></li>
+          <p>(GateEvidence ids follow week 2's changelog rule — append-only plumbing gets a UUID, cited artifacts get content-addressed ids; <code>uuid</code> is already in your <code>go.mod</code>.)</p></li>
+        <li><p><strong>Implement the DoD.</strong> Six canonical items for the mini (the real list has 11/12): <code>application_code, unit_tests, contract_tests, integration_tests, observability, runbook</code>. Store as a JSON-stringified object on the Responsibility (nested maps ride <code>serializeProps</code>); <code>UpdateDoD(ctx, respID, item, verified)</code> rejects unknown keys <em>and returns the full valid list in the error</em> — the tool teaches its own vocabulary. Then register the <code>dod_complete</code> simple check: every canonical key true.</p></li>
         <li><p><strong>Expose <code>submit_gate_evidence</code> and <code>update_dod</code> as tools</strong>, then walk <code>booking-core</code> honestly toward <code>build_exit</code>: mark its WPs COMPLETE (through the status map!), flip DoD items as you actually satisfy them (you do have unit tests; you don't have a runbook — write a 10-line one at <code>docs/runbooks/booking-core.md</code> first), and submit real <code>go test ./...</code> output as <code>tests_pass</code> evidence.</p></li>
         <li><p><strong>Try to cheat, and lose:</strong> submit evidence for a check the gate doesn't declare (<code>check_not_evidence_bearing</code>); submit 5-byte content ("ok") (<code>evidence_content</code>); flip a fake DoD key (<code>unknown key</code> + the valid list). Every cheat has a named refusal.</p></li>
       </ol>
@@ -250,8 +250,9 @@ func (s *Store) latestEvidencePasses(respID, gate, check string) (bool, string) 
         <li><p><strong>Run a real review ensemble on your own code — with Claude as the reviewers.</strong> Three prompts to Claude Code, one per lens, each ending with "record your verdict via record_verdict and register findings for anything NEEDS_WORK-level":</p>
           <div class="code"><pre><code># skeptic
 "Review server/internal/graph/{gates,evidence}.go as the SKEPTIC: failure
-modes, unchecked errors, what happens when SQLite is locked, when JSON is
-malformed. record_verdict(reviewer=skeptic) + register_finding per issue."
+modes, unchecked errors, what happens when Memgraph is down mid-call, when
+a query returns zero records, when JSON props are malformed.
+record_verdict(reviewer=skeptic) + register_finding per issue."
 
 # consistency
 "Review the same files as CONSISTENCY: do they follow the store's existing
@@ -352,7 +353,7 @@ exit 0</code></pre></div></li>
 cd "$(git rev-parse --show-toplevel 2&gt;/dev/null || pwd)"
 if [[ ! -f .minidde/project.yaml ]]; then
   echo "BLOCKED: .minidde/project.yaml missing — every graph call needs a
-project identity. Create it with: project_id + db_path." &gt;&amp;2
+project identity. Create it with: project_id + bolt_uri." &gt;&amp;2
   exit 2
 fi
 exit 0</code></pre></div></li>

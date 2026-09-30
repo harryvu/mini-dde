@@ -281,7 +281,7 @@
     <div class="statrow">
       <div class="stat"><b>8</b><span>weeks, ~8–12 h each</span></div>
       <div class="stat"><b>32</b><span>lessons, 1 concept each</span></div>
-      <div class="stat"><b>Go + SQLite</b><span>mini-DDE server</span></div>
+      <div class="stat"><b>Go + Memgraph</b><span>mini-DDE server</span></div>
       <div class="stat"><b>Next.js</b><span>mini-PCC + capstone UI</span></div>
       <div class="stat"><b>mini-C2C</b><span>capstone: booking → billing → collections</span></div>
     </div>
@@ -292,7 +292,7 @@
     <div class="flowrow">
       <div class="fbox"><b>Claude Code</b><span>agents + skills + hooks</span></div>
       <div class="farrow">→</div>
-      <div class="fbox hot"><b>mini-DDE server</b><span>Go · SQLite · MCP tools<br>graph · gates · waves</span></div>
+      <div class="fbox hot"><b>mini-DDE server</b><span>Go · Memgraph · MCP tools<br>graph · gates · waves</span></div>
       <div class="farrow">→</div>
       <div class="fbox"><b>mini-PCC</b><span>Next.js journey map,<br>findings console</span></div>
     </div>
@@ -318,7 +318,7 @@
     <h4>Prerequisites &amp; setup (do this before week 1)</h4>
     <ul>
       <li>Comfortable-ish with Go basics and one JS framework; everything else is taught in place.</li>
-      <li>Install: Go ≥ 1.22, Node ≥ 20, git, SQLite CLI (<code>sqlite3</code>), Docker (weeks 7–8), Claude Code (week 4 on).</li>
+      <li>Install: Go ≥ 1.22, Node ≥ 20, git, Docker (from week 1 — Memgraph runs in a container), SQLite CLI (<code>sqlite3</code>, for the week-8 capstone services' own data), Claude Code (week 4 on).</li>
       <li>Clone access to the real repo (<code>C2C_Ono_AIR310054</code>) for the "in the real system" cross-reads — read-only is fine.</li>
       <li>Create your workspace: <code>mkdir mini-dde &amp;&amp; cd mini-dde &amp;&amp; git init</code>. All paths in the course are relative to this root.</li>
     </ul>
@@ -342,7 +342,7 @@
 
   <h3 class="sech">The weeks</h3>
   <div class="wkcards">
-    <a class="wkcard" href="#week1"><span class="wknum">WEEK 1</span><b>The graph is the truth</b><p>Why DDE puts a knowledge graph — not documents, not tickets — at the center. Build the node/edge store in Go + SQLite and a CLI to talk to it.</p><span class="wkmeta">nodes · edges · project scoping · CLI</span></a>
+    <a class="wkcard" href="#week1"><span class="wknum">WEEK 1</span><b>The graph is the truth</b><p>Why DDE puts a knowledge graph — not documents, not tickets — at the center. Build the node/edge store in Go on Memgraph (Cypher over Bolt, the real system's stack) and a CLI to talk to it.</p><span class="wkmeta">nodes · edges · Cypher · project scoping · CLI</span></a>
     <a class="wkcard" href="#week2"><span class="wknum">WEEK 2</span><b>Governed mutation</b><p>Nothing mutates without a rule. Status state machines, content-addressed IDs, required edges, and validator chains at the write boundary.</p><span class="wkmeta">update_status · allocator · edge contracts · validators</span></a>
     <a class="wkcard" href="#week3"><span class="wknum">WEEK 3</span><b>Decisions &amp; findings</b><p>The authority chain: xDR records on disk, mirrored as graph nodes, supersession, governance lint — and findings/escalations as the graph's memory of open questions.</p><span class="wkmeta">ADR/PDR/DDR/WoW/CIR · GOVERNED_BY · register_finding</span></a>
     <a class="wkcard" href="#week4"><span class="wknum">WEEK 4</span><b>The MCP server</b><p>Tools are the agent interface. Wrap your graph in an MCP server, wire Claude Code to it, and adopt the graph-first working discipline.</p><span class="wkmeta">mcp-go · tool registry · .mcp.json · hooks</span></a>
@@ -370,12 +370,12 @@
   <header class="weekhead">
     <p class="eyebrow">Week 1 · Part I — the graph kernel</p>
     <h2>The graph is the truth</h2>
-    <p class="wintro">DDE's founding bet: the durable record of a software project — its decisions, responsibilities, contracts, findings — lives in a <b>queryable graph</b>, not in tickets, wikis, or people's heads. This week you internalize why, then build the smallest honest version: a project-scoped node/edge store in Go over SQLite, with a CLI.</p>
+    <p class="wintro">DDE's founding bet: the durable record of a software project — its decisions, responsibilities, contracts, findings — lives in a <b>queryable graph</b>, not in tickets, wikis, or people's heads. This week you internalize why, then build the smallest honest version: a project-scoped node/edge store in Go over <b>Memgraph</b> (Cypher over the Bolt protocol — the same query language and driver family as the real system), with a CLI.</p>
     <ul class="wgoals">
       <li><b>Concept:</b> the four planes — intent, context, mechanism, state</li>
-      <li><b>Build:</b> <code>internal/graph</code> — nodes, edges, queries</li>
+      <li><b>Build:</b> <code>internal/graph</code> — nodes, edges, queries in Cypher</li>
       <li><b>Build:</b> a <code>minidde</code> CLI with JSON output</li>
-      <li><b>Habit:</b> idempotent writes, project scoping by construction</li>
+      <li><b>Habit:</b> idempotent MERGE writes, project scoping by construction</li>
     </ul>
     <div class="wtools"><button data-expand="week1">Expand all lessons</button><button data-collapse="week1">Collapse all</button></div>
   </header>
@@ -401,12 +401,17 @@ go 1.22
 use ./server
 EOF</code></pre></div>
           <p>The real repo is multi-module Go with no root <code>go.mod</code> (CLAUDE.md § Build &amp; test) — <code>go.work</code> gives you the same shape from day one; the capstone adds more modules under <code>use</code> later.</p></li>
+        <li><p><strong>Start the graph database.</strong> Memgraph runs as one Docker container, speaking Bolt on 7687 (the same port family as the real system's Neo4j). The named volume keeps snapshots across restarts:</p>
+          <div class="code"><pre><code>docker run -d --name memgraph -p 7687:7687 \
+  -v minidde-data:/var/lib/memgraph memgraph/memgraph</code></pre></div>
+          <p>Get a Cypher shell anytime with <code>docker exec -it memgraph mgconsole</code> (exit with ctrl-d). Use the plain <code>memgraph/memgraph</code> image — the old all-in-one <code>memgraph-platform</code> bundle is deprecated. If you want a visual graph UI, run Memgraph Lab as its own container on a shifted port (<code>docker run -d -p 3001:3000 memgraph/lab</code>) or use the desktop app; keep 3000 itself free — your Next.js apps will want it in week 7.</p></li>
         <li><p><strong>Pin your project identity.</strong> The real server reads <code>.nexus-dde/project.yaml</code> and bakes <code>project_id</code> into every query — sister tenants share one database, partitioned by that property. Yours does the same:</p>
-          <div class="code" data-file><span class="fname">.minidde/project.yaml</span><pre><code>project_id: "mini-c2c"</code></pre></div></li>
+          <div class="code" data-file><span class="fname">.minidde/project.yaml</span><pre><code>project_id: "mini-c2c"
+bolt_uri: "bolt://localhost:7687"</code></pre></div></li>
         <li><p><strong>Sketch the target layout</strong> so every later lesson has a home. Create the directories now (empty is fine):</p>
           <div class="code"><pre><code>mini-dde/
 ├── go.work
-├── .minidde/project.yaml      # project identity (week 1)
+├── .minidde/project.yaml      # project identity + Bolt URI (week 1)
 ├── server/                    # the mini-DDE server
 │   ├── cmd/minidde/           # CLI + MCP + HTTP entrypoint
 │   └── internal/
@@ -417,34 +422,35 @@ EOF</code></pre></div>
 ├── .claude/{rules,hooks,skills}/  # agent context + enforcement (weeks 4–7)
 ├── .githooks/                 # pre-commit gate (week 6)
 ├── pcc/                       # Next.js mini-PCC (week 7)
-└── capstone/                  # mini-C2C (week 8)</code></pre></div></li>
+└── capstone/                  # mini-C2C (week 8)
+# graph data lives in the memgraph container's volume — not in the repo</code></pre></div></li>
         <li><p><strong>Commit.</strong> <code>git add -A &amp;&amp; git commit -m "week 1: workspace skeleton"</code>. One commit per lesson from here on — your history becomes the course log.</p></li>
       </ol>
-      <div class="callout check"><h4>Checkpoint</h4><p><code>go work sync</code> exits clean; you can say the four planes from memory; you can point at where each will live in your tree.</p></div>
+      <div class="callout check"><h4>Checkpoint</h4><p><code>go work sync</code> exits clean; <code>echo 'RETURN 1;' | docker exec -i memgraph mgconsole</code> answers; you can say the four planes from memory and point at where each will live in your tree.</p></div>
       <div class="callout war"><h4>Why it exists</h4><p>Before Ono relocated authority into its own xDRs, vocabulary came from an upstream repo whose own files disagreed on the spine identifier, and questions raised upstream had no SLA — one open term cost ~2h of agent time in a single day. The conclusion recorded in <code>ADR-ono-xdrs-source-ESHJ</code>: "the authority chain has been ceremonial." Plane separation with a one-way hierarchy is the fix, and your mini-DDE will enforce it too.</p></div>
     </div>
   </details>
 
   <details class="lesson" data-week="week1" id="l12">
-    <summary><span class="lnum">1.2</span><span class="ltitle">A node store in ~150 lines</span><span class="lconcept">create_node</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l12" aria-label="Mark lesson 1.2 done"></label><span class="chev">▶</span></summary>
+    <summary><span class="lnum">1.2</span><span class="ltitle">A node store on Cypher</span><span class="lconcept">create_node</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l12" aria-label="Mark lesson 1.2 done"></label><span class="chev">▶</span></summary>
     <div class="lbody">
-      <p class="lead">A graph node in DDE is deliberately generic: an <b>id</b>, a <b>type</b> (Responsibility, Finding, Decision…), a <b>status</b>, and a bag of <b>properties</b>. The store bakes the <code>project_id</code> in at construction so no caller can forget it, and writes are <b>idempotent merges</b>: creating a node that exists updates its properties instead of erroring — the same <code>MERGE … ON CREATE SET n = $props ON MATCH SET n += $props</code> semantics the real server runs in Cypher, which is what lets agents safely retry.</p>
+      <p class="lead">A graph node in DDE is deliberately generic: an <b>id</b>, a <b>type</b> (Responsibility, Finding, Decision… — stored as the node's <em>label</em>), a <b>status</b>, and a bag of <b>properties</b>. The store bakes the <code>project_id</code> in at construction so no caller can forget it, and writes are <b>idempotent merges</b>: <code>MERGE … ON CREATE SET n += $props ON MATCH SET n += $props</code> — creating a node that exists updates its properties instead of erroring, which is what lets agents safely retry. This is not an approximation of the real system; it's the same statement shape against the same wire protocol.</p>
       <div class="callout real">
         <h4>In the real system</h4>
-        <p>The schema is one 2,347-line file: <code>builder/server/internal/graph/model.go</code> — "63 node types, 63 edge types, status enums, valid status transitions". The store is <code>internal/graph/store.go</code>: a <code>neo4j.Driver</code> + <code>projectID</code>, every query injecting <code>$pid</code>; <code>CreateNode</code> at <code>store.go:175-210</code> is the idempotent MERGE. There's no ORM — hand-written Cypher constants, one method per use case.</p>
+        <p>The schema is one 2,347-line file: <code>builder/server/internal/graph/model.go</code> — "63 node types, 63 edge types, status enums, valid status transitions". The store is <code>internal/graph/store.go</code>: a <code>neo4j.Driver</code> + <code>projectID</code>, every query injecting <code>$pid</code>; <code>CreateNode</code> at <code>store.go:175-210</code> is the idempotent MERGE. There's no ORM — hand-written Cypher constants, one method per use case. The real server pins driver v6; you'll use the v5 line, which is API-stable and works against Memgraph's Bolt.</p>
       </div>
       <h4>Tasks</h4>
       <ol class="steps">
-        <li><p><strong>Add the SQLite driver</strong> (pure Go, no CGO — friendlier for juniors than the C driver):</p>
-          <div class="code"><pre><code>cd server &amp;&amp; go get modernc.org/sqlite</code></pre></div></li>
+        <li><p><strong>Add the driver</strong> — the same family the real server uses:</p>
+          <div class="code"><pre><code>cd server &amp;&amp; go get github.com/neo4j/neo4j-go-driver/v5</code></pre></div></li>
         <li><p><strong>Define the model.</strong> Start your own miniature <code>model.go</code>:</p>
           <div class="code" data-file><span class="fname">server/internal/graph/model.go</span><pre><code>package graph
 
 import "time"
 
 // Node is the one generic shape every graph entity shares.
-// Type distinguishes Responsibility from Finding from Decision;
-// Props carries everything type-specific.
+// Type becomes the Memgraph label; Props carries everything
+// type-specific.
 type Node struct {
 	ID        string         `json:"id"`
 	Type      string         `json:"type"`
@@ -462,143 +468,197 @@ type Edge struct {
 
 // The node types the mini-DDE admits. The real model.go defines 63;
 // we start with the load-bearing core and grow it week by week.
+// This allowlist is ALSO the label-injection guard (see CreateNode).
 var ValidNodeTypes = map[string]bool{
 	"Project": true, "Responsibility": true, "WorkPackage": true,
 	"Document": true, "Decision": true, "Finding": true,
 	"Escalation": true, "Pattern": true, "Verdict": true,
 	"Event": true, "Contract": true, "AgentSession": true,
 	"GateEvidence": true, "ExternalDependency": true,
+	"ChangelogEntry": true, // server-minted in week 2
 }</code></pre></div></li>
-        <li><p><strong>Write the store.</strong> Constructor opens the DB, applies the schema, and bakes in the project id:</p>
+        <li><p><strong>Write the store.</strong> Constructor connects over Bolt, verifies connectivity, and bakes in the project id. Context is always the first argument — the house rule (R4) you'll keep all course long:</p>
           <div class="code" data-file><span class="fname">server/internal/graph/store.go</span><pre><code>package graph
 
 import (
-	"database/sql"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
 var ErrNotFound = errors.New("node not found")
 var ErrBadType = errors.New("unknown node type")
 
-const schema = `
-CREATE TABLE IF NOT EXISTS nodes (
-  id         TEXT NOT NULL,
-  project_id TEXT NOT NULL,
-  type       TEXT NOT NULL,
-  status     TEXT NOT NULL DEFAULT '',
-  props      TEXT NOT NULL DEFAULT '{}',
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  PRIMARY KEY (id, project_id)
-);
-CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(project_id, type);
-CREATE TABLE IF NOT EXISTS edges (
-  project_id TEXT NOT NULL,
-  src TEXT NOT NULL, dst TEXT NOT NULL, type TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  PRIMARY KEY (project_id, src, dst, type)
-);`
-
-// Store carries the connection AND the project identity — callers can
+// Store carries the driver AND the project identity — callers can
 // never forget project scoping because they never supply it.
 type Store struct {
-	db        *sql.DB
+	driver    neo4j.DriverWithContext
 	projectID string
 }
 
-func Open(path, projectID string) (*Store, error) {
-	db, err := sql.Open("sqlite", path)
+func Open(ctx context.Context, boltURI, projectID string) (*Store, error) {
+	driver, err := neo4j.NewDriverWithContext(boltURI, neo4j.NoAuth())
 	if err != nil {
-		return nil, fmt.Errorf("open %s: %w", path, err)
+		return nil, fmt.Errorf("bolt_driver: %w", err)
 	}
-	if _, err := db.Exec(schema); err != nil {
-		return nil, fmt.Errorf("apply schema: %w", err)
+	if err := driver.VerifyConnectivity(ctx); err != nil {
+		return nil, fmt.Errorf("memgraph_unreachable: is the container up? "+
+			"(docker start memgraph): %w", err)
 	}
-	return &amp;Store{db: db, projectID: projectID}, nil
+	return &amp;Store{driver: driver, projectID: projectID}, nil
 }
 
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close(ctx context.Context) error { return s.driver.Close(ctx) }
+
+// run executes one Cypher statement with $pid always injected — the
+// project-scoping-by-construction trick.
+func (s *Store) run(ctx context.Context, cypher string,
+	params map[string]any) (*neo4j.EagerResult, error) {
+	if params == nil {
+		params = map[string]any{}
+	}
+	params["pid"] = s.projectID
+	return neo4j.ExecuteQuery(ctx, s.driver, cypher, params,
+		neo4j.EagerResultTransformer)
+}
+
+// Fixed-width nanoseconds: lexicographic order IS time order, and
+// "latest wins" reads (week 6) can't tie within a second.
+func nowRFC3339() string {
+	return time.Now().UTC().Format("2006-01-02T15:04:05.000000000Z07:00")
+}
+
+// serializeProps: anything non-scalar is JSON-stringified before
+// storage. Memgraph could store nested maps natively — flattening is
+// a CHOICE, not a protocol limit: it keeps every property greppable,
+// string-comparable, and portable to Neo4j (whose properties really
+// are scalars/flat lists only), exactly like the real server's
+// serializeProps.
+func serializeProps(in map[string]any) map[string]any {
+	out := map[string]any{}
+	for k, v := range in {
+		switch v.(type) {
+		case nil, bool, int, int64, float64, string:
+			out[k] = v
+		default:
+			b, _ := json.Marshal(v)
+			out[k] = string(b)
+		}
+	}
+	return out
+}
 
 // CreateNode is an idempotent merge: insert on first sight, patch
 // props on repeat — the retry-safe write agents depend on.
-func (s *Store) CreateNode(n Node) error {
+// Cypher cannot parameterize labels, so the label is interpolated —
+// ONLY from the ValidNodeTypes allowlist (that check IS the injection
+// guard, mirroring the real store's ValidateNeo4jIdentifier contract);
+// values always travel as $parameters.
+func (s *Store) CreateNode(ctx context.Context, n Node) error {
 	if !ValidNodeTypes[n.Type] {
 		return fmt.Errorf("%w: %q", ErrBadType, n.Type)
 	}
-	props, err := json.Marshal(n.Props)
-	if err != nil {
-		return fmt.Errorf("marshal props: %w", err)
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, err = s.db.Exec(`
-		INSERT INTO nodes (id, project_id, type, status, props, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id, project_id) DO UPDATE SET
-		  props = json_patch(nodes.props, excluded.props),
-		  updated_at = excluded.updated_at`,
-		n.ID, s.projectID, n.Type, n.Status, string(props), now, now)
+	q := fmt.Sprintf(`
+		MERGE (n:%s {id: $id, project_id: $pid})
+		ON CREATE SET n += $props, n.status = $status,
+		              n.created_at = $now, n.updated_at = $now
+		ON MATCH SET  n += $props, n.updated_at = $now`, n.Type)
+	_, err := s.run(ctx, q, map[string]any{
+		"id": n.ID, "props": serializeProps(n.Props),
+		"status": n.Status, "now": nowRFC3339(),
+	})
 	if err != nil {
 		return fmt.Errorf("create node %s: %w", n.ID, err)
 	}
 	return nil
 }
 
-func (s *Store) GetNode(id string) (Node, error) {
-	var n Node
-	var props, created, updated string
-	err := s.db.QueryRow(`
-		SELECT id, type, status, props, created_at, updated_at
-		FROM nodes WHERE id = ? AND project_id = ?`,
-		id, s.projectID).Scan(&amp;n.ID, &amp;n.Type, &amp;n.Status, &amp;props, &amp;created, &amp;updated)
-	if errors.Is(err, sql.ErrNoRows) {
-		return n, fmt.Errorf("%w: %s", ErrNotFound, id)
-	}
+func (s *Store) GetNode(ctx context.Context, id string) (Node, error) {
+	res, err := s.run(ctx, `
+		MATCH (n {id: $id, project_id: $pid})
+		RETURN labels(n)[0] AS type, n`, map[string]any{"id": id})
 	if err != nil {
-		return n, fmt.Errorf("get node %s: %w", id, err)
+		return Node{}, fmt.Errorf("get node %s: %w", id, err)
 	}
-	_ = json.Unmarshal([]byte(props), &amp;n.Props)
-	n.CreatedAt, _ = time.Parse(time.RFC3339, created)
-	n.UpdatedAt, _ = time.Parse(time.RFC3339, updated)
+	if len(res.Records) == 0 {
+		return Node{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+	}
+	return nodeFromRecord(res.Records[0])
+}
+
+// nodeFromRecord splits bookkeeping fields out of the raw property
+// bag; everything else is user props.
+func nodeFromRecord(rec *neo4j.Record) (Node, error) {
+	typ, _, _ := neo4j.GetRecordValue[string](rec, "type")
+	raw, _, err := neo4j.GetRecordValue[neo4j.Node](rec, "n")
+	if err != nil {
+		return Node{}, fmt.Errorf("decode node: %w", err)
+	}
+	n := Node{Type: typ, Props: map[string]any{}}
+	for k, v := range raw.Props {
+		switch k {
+		case "id":
+			n.ID, _ = v.(string)
+		case "status":
+			n.Status, _ = v.(string)
+		case "created_at":
+			if s, ok := v.(string); ok {
+				n.CreatedAt, _ = time.Parse(time.RFC3339, s)
+			}
+		case "updated_at":
+			if s, ok := v.(string); ok {
+				n.UpdatedAt, _ = time.Parse(time.RFC3339, s)
+			}
+		case "project_id": // bookkeeping, never surfaced
+		default:
+			n.Props[k] = v
+		}
+	}
 	return n, nil
 }</code></pre></div>
-          <p>Two patterns to notice, both lifted from the real store: <b>sentinel errors wrapped with <code>%w</code></b> so callers use <code>errors.Is</code>, and <b>the merge-on-conflict write</b> (SQLite's <code>json_patch</code> plays the role of Cypher's <code>n += $props</code>).</p></li>
-        <li><p><strong>Prove it with a test</strong> — table-driven, no mock library, the house style:</p>
+          <p>Three patterns to notice, all lifted from the real store: <b>sentinel errors wrapped with <code>%w</code></b> so callers use <code>errors.Is</code>; <b>the allowlist-as-injection-guard</b> for interpolated labels; and <b>the MERGE write</b> — Cypher's <code>ON MATCH SET n += $props</code> is the merge-don't-error semantics verbatim.</p></li>
+        <li><p><strong>Prove it with a test</strong> — and steal a trick from multi-tenancy: each test gets its own <code>project_id</code>, so tests isolate <em>inside one shared database</em> and clean up by project. If Memgraph isn't running, skip rather than fail (the real repo's <code>ConnectOrSkip</code> pattern):</p>
           <div class="code" data-file><span class="fname">server/internal/graph/store_test.go</span><pre><code>package graph
 
 import (
+	"context"
 	"errors"
-	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func testStore(t *testing.T) *Store {
+func testStore(t *testing.T) (*Store, context.Context) {
 	t.Helper()
-	s, err := Open(filepath.Join(t.TempDir(), "test.db"), "mini-c2c")
+	ctx := context.Background()
+	pid := "test-" + strings.ToLower(t.Name())
+	s, err := Open(ctx, "bolt://localhost:7687", pid)
 	if err != nil {
-		t.Fatalf("open: %v", err)
+		t.Skipf("memgraph not running (docker start memgraph): %v", err)
 	}
-	t.Cleanup(func() { s.Close() })
-	return s
+	t.Cleanup(func() {
+		s.run(ctx, `MATCH (n {project_id: $pid}) DETACH DELETE n`, nil)
+		s.Close(ctx)
+	})
+	return s, ctx
 }
 
 func TestCreateNodeIsIdempotentMerge(t *testing.T) {
-	s := testStore(t)
+	s, ctx := testStore(t)
 	n := Node{ID: "booking-core", Type: "Responsibility",
 		Props: map[string]any{"name": "Booking core", "domain": "booking"}}
-	if err := s.CreateNode(n); err != nil {
+	if err := s.CreateNode(ctx, n); err != nil {
 		t.Fatalf("first create: %v", err)
 	}
 	// Second create with new props must merge, not error.
 	n.Props = map[string]any{"priority": "high"}
-	if err := s.CreateNode(n); err != nil {
+	if err := s.CreateNode(ctx, n); err != nil {
 		t.Fatalf("second create: %v", err)
 	}
-	got, err := s.GetNode("booking-core")
+	got, err := s.GetNode(ctx, "booking-core")
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -608,14 +668,14 @@ func TestCreateNodeIsIdempotentMerge(t *testing.T) {
 }
 
 func TestUnknownTypeRejected(t *testing.T) {
-	s := testStore(t)
-	err := s.CreateNode(Node{ID: "x", Type: "Widget"})
+	s, ctx := testStore(t)
+	err := s.CreateNode(ctx, Node{ID: "x", Type: "Widget"})
 	if !errors.Is(err, ErrBadType) {
 		t.Fatalf("want ErrBadType, got %v", err)
 	}
 }</code></pre></div></li>
       </ol>
-      <div class="callout check"><h4>Checkpoint</h4><p><code>cd server &amp;&amp; go test ./internal/graph/</code> — both tests green. Open the DB with <code>sqlite3</code> and confirm a node row exists with your <code>project_id</code> stamped on it.</p></div>
+      <div class="callout check"><h4>Checkpoint</h4><p><code>cd server &amp;&amp; go test ./internal/graph/</code> — both tests green (and they skip cleanly when the container is stopped — try it). In <code>mgconsole</code>: <code>MATCH (n:Responsibility) RETURN n.id, n.project_id;</code> shows your node with the project stamped on it.</p></div>
     </div>
   </details>
 
@@ -631,6 +691,8 @@ func TestUnknownTypeRejected(t *testing.T) {
       <ol class="steps">
         <li><p><strong>Declare the edge vocabulary.</strong> Append to <code>model.go</code>:</p>
           <div class="code" data-file><span class="fname">server/internal/graph/model.go (append)</span><pre><code>// Edge types, SOURCE → TARGET. A subset of the real 63.
+// Like ValidNodeTypes, this allowlist doubles as the injection guard
+// for interpolated relationship types.
 const (
 	EdgeBelongsTo    = "BELONGS_TO"     // WorkPackage → Responsibility
 	EdgeDocumentedBy = "DOCUMENTED_BY"  // Responsibility → Document
@@ -659,94 +721,94 @@ var ValidEdgeTypes = map[string]bool{
           <div class="code" data-file><span class="fname">server/internal/graph/edges.go</span><pre><code>package graph
 
 import (
+	"context"
 	"fmt"
-	"time"
 )
 
 // CreateEdge requires both endpoints to exist — an edge to a ghost
-// node is how graphs silently rot.
-func (s *Store) CreateEdge(src, dst, edgeType string) error {
+// node is how graphs silently rot. (A MATCH that finds nothing would
+// no-op SILENTLY — that's why we existence-check first, loudly.)
+func (s *Store) CreateEdge(ctx context.Context, src, dst, edgeType string) error {
 	if !ValidEdgeTypes[edgeType] {
 		return fmt.Errorf("unknown edge type %q", edgeType)
 	}
 	for _, id := range []string{src, dst} {
-		if _, err := s.GetNode(id); err != nil {
+		if _, err := s.GetNode(ctx, id); err != nil {
 			return fmt.Errorf("edge endpoint: %w", err)
 		}
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := s.db.Exec(`
-		INSERT INTO edges (project_id, src, dst, type, created_at)
-		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT DO NOTHING`,
-		s.projectID, src, dst, edgeType, now)
-	if err != nil {
+	q := fmt.Sprintf(`
+		MATCH (a {id: $src, project_id: $pid}),
+		      (b {id: $dst, project_id: $pid})
+		MERGE (a)-[:%s]-&gt;(b)`, edgeType)
+	if _, err := s.run(ctx, q, map[string]any{"src": src, "dst": dst}); err != nil {
 		return fmt.Errorf("create edge %s-[%s]-&gt;%s: %w", src, edgeType, dst, err)
 	}
 	return nil
 }
 
 // QueryAll lists nodes of a type, optionally filtered by status.
-func (s *Store) QueryAll(nodeType, status string) ([]Node, error) {
-	q := `SELECT id FROM nodes WHERE project_id = ? AND type = ?`
-	args := []any{s.projectID, nodeType}
-	if status != "" {
-		q += ` AND status = ?`
-		args = append(args, status)
+func (s *Store) QueryAll(ctx context.Context, nodeType, status string) ([]Node, error) {
+	if !ValidNodeTypes[nodeType] {
+		return nil, fmt.Errorf("%w: %q", ErrBadType, nodeType)
 	}
-	q += ` ORDER BY id`
-	rows, err := s.db.Query(q, args...)
+	q := fmt.Sprintf(`
+		MATCH (n:%s {project_id: $pid})
+		WHERE $status = '' OR n.status = $status
+		RETURN labels(n)[0] AS type, n
+		ORDER BY n.id`, nodeType)
+	res, err := s.run(ctx, q, map[string]any{"status": status})
 	if err != nil {
 		return nil, fmt.Errorf("query %s: %w", nodeType, err)
 	}
-	defer rows.Close()
 	var out []Node
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&amp;id); err != nil {
-			return nil, err
-		}
-		n, err := s.GetNode(id)
+	for _, rec := range res.Records {
+		n, err := nodeFromRecord(rec)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, n)
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
-// Neighbors walks one hop. dir is "out" (src=id) or "in" (dst=id);
-// edgeType "" means any.
-func (s *Store) Neighbors(id, dir, edgeType string) ([]Edge, error) {
-	col := "src"
+// Neighbors walks one hop. dir is "out" (edges leaving id) or "in"
+// (edges arriving at id); edgeType "" means any.
+func (s *Store) Neighbors(ctx context.Context, id, dir, edgeType string) ([]Edge, error) {
+	q := `MATCH (a {id: $id, project_id: $pid})-[r]-&gt;(b)
+	      WHERE ($t = '' OR type(r) = $t) AND b.project_id = $pid
+	      RETURN a.id AS src, b.id AS dst, type(r) AS type`
 	if dir == "in" {
-		col = "dst"
+		q = `MATCH (b)-[r]-&gt;(a {id: $id, project_id: $pid})
+		     WHERE ($t = '' OR type(r) = $t) AND b.project_id = $pid
+		     RETURN b.id AS src, a.id AS dst, type(r) AS type`
 	}
-	q := fmt.Sprintf(`SELECT src, dst, type FROM edges
-		WHERE project_id = ? AND %s = ?`, col)
-	args := []any{s.projectID, id}
-	if edgeType != "" {
-		q += ` AND type = ?`
-		args = append(args, edgeType)
-	}
-	rows, err := s.db.Query(q, args...)
+	res, err := s.run(ctx, q, map[string]any{"id": id, "t": edgeType})
 	if err != nil {
 		return nil, fmt.Errorf("neighbors of %s: %w", id, err)
 	}
-	defer rows.Close()
 	var out []Edge
-	for rows.Next() {
+	for _, rec := range res.Records {
 		var e Edge
-		if err := rows.Scan(&amp;e.Src, &amp;e.Dst, &amp;e.Type); err != nil {
-			return nil, err
-		}
+		e.Src, _, _ = neo4j.GetRecordValue[string](rec, "src")
+		e.Dst, _, _ = neo4j.GetRecordValue[string](rec, "dst")
+		e.Type, _, _ = neo4j.GetRecordValue[string](rec, "type")
 		out = append(out, e)
 	}
-	return out, rows.Err()
-}</code></pre></div></li>
-        <li><p><strong>Test the walk.</strong> Create a Responsibility, a WorkPackage, a <code>BELONGS_TO</code> edge; assert <code>Neighbors(resp, "in", "BELONGS_TO")</code> finds the WP; assert an edge to a missing node returns <code>ErrNotFound</code>. Write this test yourself — it's the week-1 exam.</p></li>
+	return out, nil
+}
+
+// DeleteNode: DETACH DELETE — the rollback primitive weeks 2-3 use
+// when a bundled write half-fails.
+func (s *Store) DeleteNode(ctx context.Context, id string) error {
+	_, err := s.run(ctx, `MATCH (n {id: $id, project_id: $pid}) DETACH DELETE n`,
+		map[string]any{"id": id})
+	return err
+}</code></pre></div>
+          <p>(Add the <code>neo4j</code> import to this file too.)</p></li>
+        <li><p><strong>Test the walk.</strong> Create a Responsibility, a WorkPackage, a <code>BELONGS_TO</code> edge; assert <code>Neighbors(ctx, resp, "in", "BELONGS_TO")</code> finds the WP; assert an edge to a missing node returns <code>ErrNotFound</code>; assert <code>DeleteNode</code> takes the node's edges with it. Write this test yourself — it's the week-1 exam.</p></li>
       </ol>
-      <div class="callout check"><h4>Checkpoint</h4><p>Your test proves: valid edge created; duplicate edge is a no-op; edge to a ghost node fails loudly; one-hop walk works in both directions.</p></div>
+      <div class="callout check"><h4>Checkpoint</h4><p>Your test proves: valid edge created; duplicate edge is a no-op (MERGE); edge to a ghost node fails loudly; one-hop walk works in both directions; DETACH DELETE leaves no dangling edges (verify in mgconsole: <code>MATCH ()-[r]-&gt;() RETURN count(r);</code>).</p></div>
       <div class="callout war"><h4>Why it exists</h4><p>The real rule documents the failure: nodes created with a <code>responsibility_id</code> property but no <code>BELONGS_TO</code> edge were invisible to the parent's UI tabs and to the wave planner — the data existed and the system couldn't see it. "The graph saying 35 things can run in parallel when they need infrastructure first" is the graph lying; edges are how it tells the truth.</p></div>
     </div>
   </details>
@@ -762,6 +824,7 @@ func (s *Store) Neighbors(id, dir, edgeType string) ([]Edge, error) {
           <div class="code" data-file><span class="fname">server/cmd/minidde/main.go</span><pre><code>package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -777,18 +840,19 @@ func main() {
 	}
 }
 
-func openStore() (*graph.Store, error) {
-	// Course simplification: project id from env with the same
-	// default the .minidde/project.yaml pins.
+func openStore(ctx context.Context) (*graph.Store, error) {
+	// Course simplification for week 1: env with the same defaults
+	// .minidde/project.yaml pins. Week 4 replaces this with a real
+	// config loader reading that file.
 	pid := os.Getenv("MINIDDE_PROJECT")
 	if pid == "" {
 		pid = "mini-c2c"
 	}
-	db := os.Getenv("MINIDDE_DB")
-	if db == "" {
-		db = "minidde.db"
+	uri := os.Getenv("MINIDDE_BOLT")
+	if uri == "" {
+		uri = "bolt://localhost:7687"
 	}
-	return graph.Open(db, pid)
+	return graph.Open(ctx, uri, pid)
 }
 
 func emit(v any) error {
@@ -801,11 +865,12 @@ func run(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: minidde &lt;create-node|get|ls|link|neighbors&gt; ...")
 	}
-	s, err := openStore()
+	ctx := context.Background()
+	s, err := openStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer s.Close()
+	defer s.Close(ctx)
 
 	switch args[0] {
 	case "create-node":
@@ -818,13 +883,13 @@ func run(args []string) error {
 		if err := json.Unmarshal([]byte(*props), &amp;p); err != nil {
 			return fmt.Errorf("bad --props: %w", err)
 		}
-		if err := s.CreateNode(graph.Node{ID: *id, Type: *typ, Props: p}); err != nil {
+		if err := s.CreateNode(ctx, graph.Node{ID: *id, Type: *typ, Props: p}); err != nil {
 			return err
 		}
-		n, _ := s.GetNode(*id)
+		n, _ := s.GetNode(ctx, *id)
 		return emit(n)
 	case "get":
-		n, err := s.GetNode(args[1])
+		n, err := s.GetNode(ctx, args[1])
 		if err != nil {
 			return err
 		}
@@ -834,7 +899,7 @@ func run(args []string) error {
 		typ := fs.String("type", "Responsibility", "node type")
 		status := fs.String("status", "", "status filter")
 		fs.Parse(args[1:])
-		nodes, err := s.QueryAll(*typ, *status)
+		nodes, err := s.QueryAll(ctx, *typ, *status)
 		if err != nil {
 			return err
 		}
@@ -845,7 +910,7 @@ func run(args []string) error {
 		dst := fs.String("dst", "", "target node id")
 		typ := fs.String("type", "", "edge type")
 		fs.Parse(args[1:])
-		if err := s.CreateEdge(*src, *dst, *typ); err != nil {
+		if err := s.CreateEdge(ctx, *src, *dst, *typ); err != nil {
 			return err
 		}
 		return emit(map[string]string{"created": *src + " -[" + *typ + "]-&gt; " + *dst})
@@ -855,7 +920,7 @@ func run(args []string) error {
 		dir := fs.String("dir", "out", "out|in")
 		typ := fs.String("type", "", "edge type filter")
 		fs.Parse(args[1:])
-		edges, err := s.Neighbors(*id, *dir, *typ)
+		edges, err := s.Neighbors(ctx, *id, *dir, *typ)
 		if err != nil {
 			return err
 		}
@@ -875,10 +940,10 @@ $M create-node --id booking-core-wp-001 --type WorkPackage \
   --props '{"name":"Booking API","sequence":1}'
 $M link --src booking-core-wp-001 --dst booking-core --type BELONGS_TO
 $M ls --type Responsibility</code></pre></div></li>
-        <li><p><strong>Run it</strong>: <code>chmod +x scripts/seed.sh &amp;&amp; ./scripts/seed.sh</code>. Then explore: <code>go run ./server/cmd/minidde neighbors --id booking-core --dir in</code>.</p></li>
-        <li><p><strong>Commit</strong>, and add <code>minidde.db</code> to <code>.gitignore</code> — state lives in the graph, but the graph's <em>file</em> is derived and rebuildable from your seed.</p></li>
+        <li><p><strong>Run it</strong>: <code>chmod +x scripts/seed.sh &amp;&amp; ./scripts/seed.sh</code>. Then explore: <code>go run ./server/cmd/minidde neighbors --id booking-core --dir in</code> — and the same walk in Cypher via mgconsole: <code>MATCH (wp)-[:BELONGS_TO]-&gt;(r {id:'booking-core'}) RETURN wp.id;</code>.</p></li>
+        <li><p><strong>Commit.</strong> Note what you are <em>not</em> committing: graph data lives in the container's volume, not the repo — and that's fine, because your seed is <b>idempotent</b> (MERGE all the way down). Wipe the container (<code>docker rm -f memgraph</code>, re-run the week-1.1 <code>docker run</code>) and re-seed to prove the graph is rebuildable. State you can regenerate is state you can't lose.</p></li>
       </ol>
-      <div class="callout check"><h4>Checkpoint — end of week 1</h4><p>The seed runs twice in a row with no errors (idempotency proves itself). <code>neighbors --id booking-core --dir in</code> returns the WP edge. You can explain to a colleague why edges beat foreign-key props in this system.</p></div>
+      <div class="callout check"><h4>Checkpoint — end of week 1</h4><p>The seed runs twice in a row with no errors (idempotency proves itself). <code>neighbors --id booking-core --dir in</code> returns the WP edge. You can explain to a colleague why edges beat foreign-key props in this system — and you've run the same query from Go and from mgconsole.</p></div>
     </div>
   </details>
 </section>
@@ -887,7 +952,7 @@ $M ls --type Responsibility</code></pre></div></li>
   <header class="weekhead">
     <p class="eyebrow">Week 2 · Part I — the graph kernel</p>
     <h2>Governed mutation</h2>
-    <p class="wintro">A graph anyone can write anything to is a wiki with extra steps. DDE's real power is that <b>every mutation passes a rule at the write boundary</b>: statuses move only along a state machine, IDs are minted by the server, required edges are created inside the write, and validators run in named chains. This week your store stops being a bag of rows and starts being governed.</p>
+    <p class="wintro">A graph anyone can write anything to is a wiki with extra steps. DDE's real power is that <b>every mutation passes a rule at the write boundary</b>: statuses move only along a state machine, IDs are minted by the server, required edges are created inside the write, and validators run in named chains. This week your store stops being a bag of nodes and starts being governed.</p>
     <ul class="wgoals">
       <li><b>Concept:</b> transition maps + the one legitimate status writer</li>
       <li><b>Build:</b> <code>update_status</code> with changelog; content-addressed ID allocator</li>
@@ -907,7 +972,7 @@ $M ls --type Responsibility</code></pre></div></li>
       </div>
       <h4>Tasks</h4>
       <ol class="steps">
-        <li><p><strong>Encode the maps.</strong> These are simplified but shape-faithful copies of the real ones:</p>
+        <li><p><strong>Encode the maps.</strong> These are simplified but shape-faithful copies of the real ones — pure Go, no database in sight:</p>
           <div class="code" data-file><span class="fname">server/internal/graph/transitions.go</span><pre><code>package graph
 
 import "fmt"
@@ -968,57 +1033,50 @@ func ValidateTransition(nodeType, from, to string) error {
 	}
 	return fmt.Errorf("invalid_transition: %s %q → %q is not in the map", nodeType, from, to)
 }</code></pre></div></li>
-        <li><p><strong>Write the one status writer</strong> — with a mandatory reason and a changelog:</p>
+        <li><p><strong>Write the one status writer</strong> — with a mandatory reason and a changelog. Both writes ride <b>one Cypher statement</b>, so a transition without its audit row can never exist (single-statement atomicity — the same trick the real allocator leans on):</p>
           <div class="code" data-file><span class="fname">server/internal/graph/status.go</span><pre><code>package graph
 
 import (
+	"context"
 	"fmt"
-	"time"
+
+	"github.com/google/uuid"
 )
 
-const changelogSchema = `
-CREATE TABLE IF NOT EXISTS changelog (
-  project_id TEXT NOT NULL, node_id TEXT NOT NULL,
-  from_status TEXT, to_status TEXT, reason TEXT NOT NULL,
-  at TEXT NOT NULL
-);`
-
 // UpdateStatus is the ONLY path that may change a node's status.
-func (s *Store) UpdateStatus(id, to, reason string) error {
+func (s *Store) UpdateStatus(ctx context.Context, id, to, reason string) error {
 	if reason == "" {
 		return fmt.Errorf("reason_required: every transition records why")
 	}
-	n, err := s.GetNode(id)
+	n, err := s.GetNode(ctx, id)
 	if err != nil {
 		return err
 	}
 	if err := ValidateTransition(n.Type, n.Status, to); err != nil {
 		return err
 	}
-	tx, err := s.db.Begin()
+	// Status write + ChangelogEntry node in ONE statement = atomic.
+	_, err = s.run(ctx, `
+		MATCH (n {id: $id, project_id: $pid})
+		SET n.status = $to, n.updated_at = $now
+		CREATE (c:ChangelogEntry {
+			id: $cid, project_id: $pid, node_id: $id,
+			from_status: $from, to_status: $to,
+			reason: $reason, created_at: $now, updated_at: $now
+		})`, map[string]any{
+		"id": id, "to": to, "from": n.Status, "reason": reason,
+		"cid": "changelog-" + uuid.NewString(), "now": nowRFC3339(),
+	})
 	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
+		return fmt.Errorf("update status %s → %s: %w", id, to, err)
 	}
-	defer tx.Rollback()
-	now := time.Now().UTC().Format(time.RFC3339)
-	if _, err := tx.Exec(
-		`UPDATE nodes SET status = ?, updated_at = ? WHERE id = ? AND project_id = ?`,
-		to, now, id, s.projectID); err != nil {
-		return fmt.Errorf("update status: %w", err)
-	}
-	if _, err := tx.Exec(
-		`INSERT INTO changelog (project_id, node_id, from_status, to_status, reason, at)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		s.projectID, id, n.Status, to, reason, now); err != nil {
-		return fmt.Errorf("changelog: %w", err)
-	}
-	return tx.Commit()
+	return nil
 }</code></pre></div>
-          <p>Add <code>changelogSchema</code> to the <code>schema</code> constant in <code>store.go</code> (or exec it in <code>Open</code>). Status + changelog commit in <b>one transaction</b> — a transition without its audit row never exists.</p></li>
+          <p><code>go get github.com/google/uuid</code> — changelog ids take a UUID. The rule of thumb you'll reuse all course: content-addressed ids for artifacts agents cite by name, UUIDs for append-only plumbing rows nobody references.</p></li>
         <li><p><strong>Fix the seed:</strong> nodes are now born via the map. In <code>seed.sh</code>, after creating <code>booking-core</code>, add a status walk: <code>update-status --id booking-core --to NOT_STARTED --reason "seeded"</code>. Add the <code>update-status</code> subcommand to the CLI (mirror the <code>link</code> pattern — 10 lines).</p></li>
         <li><p><strong>Test the guard rails.</strong> Table-driven: NOT_STARTED→BUILDING must fail (skips DESIGNING/DESIGN_COMPLETE); IN_REVIEW→COMPLETE must pass; COMPLETE→BUILDING must fail; same-status must fail; missing reason must fail; and CONFIRMED (Finding) must be a dead end.</p></li>
       </ol>
-      <div class="callout check"><h4>Checkpoint</h4><p>Tests green. <code>sqlite3 minidde.db 'SELECT * FROM changelog'</code> shows one row per transition with your reasons. There is no code path that writes <code>nodes.status</code> outside <code>UpdateStatus</code> — grep to prove it.</p></div>
+      <div class="callout check"><h4>Checkpoint</h4><p>Tests green. In mgconsole: <code>MATCH (c:ChangelogEntry) RETURN c.node_id, c.from_status, c.to_status, c.reason;</code> shows one row per transition with your reasons — or from the CLI, <code>ls --type ChangelogEntry</code>. Grep your store for <code>SET n.status</code> — exactly one hit, inside <code>UpdateStatus</code>.</p></div>
       <div class="callout war"><h4>Why it exists</h4><p>The real system pairs this with a structural twist worth knowing now: an <b>Outcome</b>'s status is <em>derived</em> from its members and <code>update_status</code> rejects it outright with the structured error <code>outcome_status_is_derived</code> — you move an Outcome by moving its members. Derived state gets a sole server-side writer; direct writes get a named refusal. You'll build a tiny version of that rollup in week 7.</p></div>
     </div>
   </details>
@@ -1029,18 +1087,21 @@ func (s *Store) UpdateStatus(id, to, reason string) error {
       <p class="lead">Decision records get IDs like <code>ADR-outcome-graph-primitive-MHMV</code>: a type, a slug derived from the title, and a random 4-char suffix. <b>Never sequential.</b> Sequential numbering needs a central counter, and the moment two agent sessions author records in parallel branches, counters collide. Content-addressed IDs are allocated server-side, atomically, and a record's identity never depends on authoring order.</p>
       <div class="callout real">
         <h4>In the real system</h4>
-        <p><code>DeriveSlug</code> lives in <code>builder/server/internal/graph/decision_id.go</code>: lowercase, stop-words removed, max 3 meaningful words, max 32 chars. Suffixes are crypto/rand <b>Crockford base32</b> — alphabet <code>0123456789ABCDEFGHJKMNPQRSTVWXYZ</code>, no I/L/O/U, for speakability. <code>Allocate</code> (<code>allocator.go:86-110</code>) retries 8 candidates at width 4, widening to 5 then 6, each attempt one atomic statement. Governance is Builder <code>ADR-atomic-id-allocator-H37G</code>; the caller-supplied-ID ban is <code>ADR-id-canonicalization-server-ZRZ5</code> — "server allocates, disk follows".</p>
+        <p><code>DeriveSlug</code> lives in <code>builder/server/internal/graph/decision_id.go</code>: lowercase, stop-words removed, max 3 meaningful words, max 32 chars. Suffixes are crypto/rand <b>Crockford base32</b> — alphabet <code>0123456789ABCDEFGHJKMNPQRSTVWXYZ</code>, no I/L/O/U, for speakability. <code>Allocate</code> (<code>allocator.go:86-110</code>) retries 8 candidates at width 4, widening to 5 then 6 — each attempt <b>one atomic Cypher statement</b>: a MERGE with an ON-CREATE marker that distinguishes "I created it" from "it already existed", closing the read-then-write race. You are about to write that exact statement.</p>
       </div>
       <h4>Tasks</h4>
       <ol class="steps">
-        <li><p><strong>Implement slug derivation + suffix generation:</strong></p>
+        <li><p><strong>Implement slug derivation + suffix generation</strong> (pure Go):</p>
           <div class="code" data-file><span class="fname">server/internal/graph/allocator.go</span><pre><code>package graph
 
 import (
+	"context"
 	"crypto/rand"
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
 // Crockford base32 minus the confusable letters I, L, O, U.
@@ -1091,11 +1152,12 @@ func GenerateSuffix(width int) (string, error) {
 	}
 	return string(out), nil
 }</code></pre></div></li>
-        <li><p><strong>Allocate atomically with bounded retry.</strong> The candidate is <code>TYPE-slug-SUFFIX</code>; a collision re-rolls; suffix width widens 4→5→6 before giving up:</p>
-          <div class="code" data-file><span class="fname">server/internal/graph/allocator.go (append)</span><pre><code>// AllocateDecisionID mints a canonical id: TYPE-slug-XXXX. Uniqueness
-// rides the (id, project_id) primary key — INSERT wins or collides,
-// there is no read-then-write race.
-func (s *Store) AllocateDecisionID(docType, title string) (string, error) {
+        <li><p><strong>Allocate atomically with bounded retry.</strong> The candidate is <code>TYPE-slug-SUFFIX</code>; the MERGE + ON-CREATE marker decides ownership in one statement; a collision re-rolls; suffix width widens 4→5→6 before giving up:</p>
+          <div class="code" data-file><span class="fname">server/internal/graph/allocator.go (append)</span><pre><code>// AllocateDecisionID mints a canonical id: TYPE-slug-XXXX.
+// One atomic statement per attempt: MERGE either creates the node
+// (marker set → the id is ours) or matches an existing one
+// (collision → re-roll). No read-then-write window exists.
+func (s *Store) AllocateDecisionID(ctx context.Context, docType, title string) (string, error) {
 	dt := strings.ToUpper(docType) // ADR | PDR | DDR | WOW | CIR
 	slug := DeriveSlug(title)
 	for width := 4; width &lt;= 6; width++ {
@@ -1105,28 +1167,30 @@ func (s *Store) AllocateDecisionID(docType, title string) (string, error) {
 				return "", err
 			}
 			id := fmt.Sprintf("%s-%s-%s", dt, slug, sfx)
-			res, err := s.db.Exec(`
-				INSERT INTO nodes (id, project_id, type, status, props, created_at, updated_at)
-				VALUES (?, ?, 'Decision', 'Proposed', '{}',
-				        strftime('%Y-%m-%dT%H:%M:%SZ','now'),
-				        strftime('%Y-%m-%dT%H:%M:%SZ','now'))
-				ON CONFLICT DO NOTHING`, id, s.projectID)
+			res, err := s.run(ctx, `
+				MERGE (d:Decision {id: $id, project_id: $pid})
+				ON CREATE SET d.status = 'Proposed',
+				              d.created_at = $now, d.updated_at = $now,
+				              d._created = true
+				WITH d, coalesce(d._created, false) AS created
+				REMOVE d._created
+				RETURN created`, map[string]any{"id": id, "now": nowRFC3339()})
 			if err != nil {
 				return "", fmt.Errorf("allocate: %w", err)
 			}
-			if n, _ := res.RowsAffected(); n == 1 {
+			created, _, _ := neo4j.GetRecordValue[bool](res.Records[0], "created")
+			if created {
 				return id, nil // we created it — the id is ours
 			}
 			// collision: re-roll
 		}
 	}
 	return "", fmt.Errorf("retry_exhausted: could not allocate id for %q", title)
-}</code></pre></div>
-          <p>Note what makes it atomic: the <code>INSERT … ON CONFLICT DO NOTHING</code> + <code>RowsAffected</code> check is one statement — the same trick the real server plays with a single Cypher <code>MERGE</code> carrying an ON-CREATE marker.</p></li>
-        <li><p><strong>Test the algorithm with table-driven cases you predict first.</strong> Write your expected slug on paper before running: <code>DeriveSlug("SQLite is the mini-DDE graph store")</code> — "is" isn't a stop-word in your list, so expect <code>sqlite-is-mini</code>; sit with how word choice changes identity, and note the real repo's records read cleanly (<code>adr-ono-xdrs-source-ESHJ</code>) because authors title with the slug in mind. The slug is derived once at allocation and never recomputed. Also assert: suffixes never contain I, L, O, or U; two allocations with the same title yield different IDs.</p></li>
+}</code></pre></div></li>
+        <li><p><strong>Test the algorithm with table-driven cases you predict first.</strong> Write your expected slug on paper before running: <code>DeriveSlug("Memgraph is the mini-DDE graph store")</code> — "is" isn't a stop-word in your list, so expect <code>memgraph-is-mini</code>; sit with how word choice changes identity, and note the real repo's records read cleanly (<code>adr-ono-xdrs-source-ESHJ</code>) because authors title with the slug in mind. The slug is derived once at allocation and never recomputed. Also assert: suffixes never contain I, L, O, or U; two allocations with the same title yield different IDs.</p></li>
         <li><p><strong>Wire a CLI command</strong> <code>allocate --type adr --title "..."</code> and mint your first three IDs. Keep them — week 3 turns them into records.</p></li>
       </ol>
-      <div class="callout check"><h4>Checkpoint</h4><p>1,000 allocations in a loop: zero errors, zero duplicate IDs (assert with a map), all suffixes clean of I/L/O/U. Same-title allocations coexist happily.</p></div>
+      <div class="callout check"><h4>Checkpoint</h4><p>1,000 allocations in a loop: zero errors, zero duplicate IDs (assert with a map), all suffixes clean of I/L/O/U. Same-title allocations coexist happily. Bonus proof of atomicity: run the loop from two goroutines against the same title — still zero duplicates.</p></div>
     </div>
   </details>
 
@@ -1143,7 +1207,10 @@ func (s *Store) AllocateDecisionID(docType, title string) (string, error) {
         <li><p><strong>Add bundled-edge creation.</strong> Extend the store with a create-with-edges API and a lineage contract:</p>
           <div class="code" data-file><span class="fname">server/internal/graph/contracts.go</span><pre><code>package graph
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 var lineageEdges = map[string]bool{
 	"ORIGINATED_FROM": true, "GOVERNED_BY": true,
@@ -1159,12 +1226,12 @@ type BundledEdge struct {
 // CreateNodeWithEdges enforces per-type edge contracts, then writes
 // node + edges together. Responsibility: ≥1 lineage edge whose target
 // already exists.
-func (s *Store) CreateNodeWithEdges(n Node, edges []BundledEdge) error {
+func (s *Store) CreateNodeWithEdges(ctx context.Context, n Node, edges []BundledEdge) error {
 	if n.Type == "Responsibility" {
 		hasLineage := false
 		for _, e := range edges {
 			if lineageEdges[e.Type] {
-				if _, err := s.GetNode(e.Dst); err != nil {
+				if _, err := s.GetNode(ctx, e.Dst); err != nil {
 					return fmt.Errorf("lineage_target_missing: %s: %w", e.Dst, err)
 				}
 				hasLineage = true
@@ -1175,7 +1242,7 @@ func (s *Store) CreateNodeWithEdges(n Node, edges []BundledEdge) error {
 				"where it came from (ORIGINATED_FROM | GOVERNED_BY | SPAWNED_FROM | DERIVED_FROM)")
 		}
 	}
-	if err := s.CreateNode(n); err != nil {
+	if err := s.CreateNode(ctx, n); err != nil {
 		return err
 	}
 	for _, e := range edges {
@@ -1183,11 +1250,10 @@ func (s *Store) CreateNodeWithEdges(n Node, edges []BundledEdge) error {
 		if src == "" {
 			src = n.ID
 		}
-		if err := s.CreateEdge(src, e.Dst, e.Type); err != nil {
+		if err := s.CreateEdge(ctx, src, e.Dst, e.Type); err != nil {
 			// verify-and-rollback: a node without its contract edges
-			// must not survive.
-			s.db.Exec(`DELETE FROM nodes WHERE id = ? AND project_id = ?`,
-				n.ID, s.projectID)
+			// must not survive. DETACH DELETE from lesson 1.3.
+			s.DeleteNode(ctx, n.ID)
 			return fmt.Errorf("bundled_edge_failed (node rolled back): %w", err)
 		}
 	}
@@ -1197,7 +1263,7 @@ func (s *Store) CreateNodeWithEdges(n Node, edges []BundledEdge) error {
         <li><p><strong>Migrate the seed</strong> to the contract: <code>booking-core</code> must now be created with <code>GOVERNED_BY</code> pointing at a Decision — so first allocate a decision (<code>PDR</code>, title "Mini C2C booking flow"), then create the Responsibility with the bundled edge. Feel the ordering the contract imposes: <b>authority before work</b>.</p></li>
         <li><p><strong>Test both failure modes:</strong> a Responsibility with no lineage edge → <code>lineage_required</code>; with a lineage edge to a ghost id → <code>lineage_target_missing</code> and (assert!) the node does not exist afterwards.</p></li>
       </ol>
-      <div class="callout check"><h4>Checkpoint</h4><p>Seed still runs clean end-to-end. The rollback test proves no orphan node survives a failed bundled edge.</p></div>
+      <div class="callout check"><h4>Checkpoint</h4><p>Seed still runs clean end-to-end. The rollback test proves no orphan node survives a failed bundled edge — and no dangling edges either (DETACH DELETE earns its name).</p></div>
       <div class="callout war"><h4>Why it exists</h4><p>Lineage answers the question every future maintainer asks: <em>why does this work exist?</em> In the real graph, ADR-053 made the quartet mandatory after unlabeled Responsibilities piled up with no traceable origin — the graph equivalent of code with no commit history.</p></div>
     </div>
   </details>
@@ -1212,7 +1278,7 @@ func (s *Store) CreateNodeWithEdges(n Node, edges []BundledEdge) error {
       </div>
       <h4>Tasks</h4>
       <ol class="steps">
-        <li><p><strong>Define the chain type and refit <code>CreateNodeWithEdges</code>:</strong></p>
+        <li><p><strong>Define the chain type and refit <code>CreateNodeWithEdges</code></strong> (pure Go — validators never touch the database):</p>
           <div class="code" data-file><span class="fname">server/internal/graph/validators.go</span><pre><code>package graph
 
 import (
@@ -1233,7 +1299,10 @@ var CreateValidators = []Validator{
 
 func validateKnownType(n Node) error {
 	if !ValidNodeTypes[n.Type] {
-		return fmt.Errorf("unknown_type: %q", n.Type)
+		// Wrap the week-1 sentinel: this validator now fires BEFORE
+		// CreateNode's own check, and TestUnknownTypeRejected asserts
+		// errors.Is(err, ErrBadType) — an unwrapped error breaks it.
+		return fmt.Errorf("unknown_type: %q: %w", n.Type, ErrBadType)
 	}
 	return nil
 }
@@ -1273,11 +1342,12 @@ func validateNoCallerStatus(n Node) error {
 	return nil
 }</code></pre></div>
           <p>Call the chain at the top of <code>CreateNodeWithEdges</code> (and <code>CreateNode</code>): <code>for _, v := range CreateValidators { if err := v(n); err != nil { return err } }</code>.</p></li>
+        <li><p><strong>Feel the governance bite: your earlier tests just went red — on purpose.</strong> Run <code>go test ./internal/graph/</code> and read the failures before fixing anything. <code>TestCreateNodeIsIdempotentMerge</code> (1.2), your 1.3 exam test, and the 2.3 lineage tests all create <code>Responsibility</code>/<code>WorkPackage</code> fixtures without an <code>eli10</code> — <code>eli10_required</code> now rejects them before the behavior under test is even reached (in 2.3's case, before the lineage check the tests assert on). Patch each fixture with a valid 80–350-char eli10. This is what shipping a new validator into a live system feels like: the chain doesn't care that the old tests predate the rule. (<code>TestUnknownTypeRejected</code> survives only because <code>validateKnownType</code> wraps <code>ErrBadType</code> — that <code>%w</code> is load-bearing.)</p></li>
         <li><p><strong>Backfill your seed nodes with <code>eli10</code> values.</strong> Write real ones — e.g. for <code>booking-core</code>: <q>Takes a submitted booking request, checks it, and turns it into a real Contract with an SAP Contract Number, telling the rest of the system the moment that happens.</q> Feel how the constraint forces you to explain the node to a non-engineer.</p></li>
-        <li><p><strong>Guard the generic update path.</strong> Add an <code>UpdateNode(id string, props map[string]any)</code> that merges props but returns <code>status_via_update_node_forbidden: use update_status</code> if <code>props</code> contains a <code>status</code> key and the type is tracked. This closes the bypass you'd otherwise discover in week 6 the hard way.</p></li>
+        <li><p><strong>Guard the generic update path.</strong> Add an <code>UpdateNode(ctx, id, props)</code> that merges props via <code>SET n += $props</code> (serialize them first!) but returns <code>status_via_update_node_forbidden: use update_status</code> if <code>props</code> contains a <code>status</code> key and the type is tracked. This closes the bypass you'd otherwise discover in week 6 the hard way.</p></li>
         <li><p><strong>Test the chain order</strong>: a node that is both an unknown type <em>and</em> missing eli10 reports <code>unknown_type</code> (first validator wins); a valid Finding without eli10 is rejected; a 500-char eli10 is rejected with the measured length in the message.</p></li>
       </ol>
-      <div class="callout check"><h4>Checkpoint — end of week 2</h4><p>Every write path (create, update, status) is governed: grep your store for <code>UPDATE nodes SET status</code> — one hit, inside <code>UpdateStatus</code>. Error messages all lead with a <code>snake_case_code:</code>. Seed runs clean with eli10s on every surfaced node.</p></div>
+      <div class="callout check"><h4>Checkpoint — end of week 2</h4><p>Every write path (create, update, status) is governed: grep your store for <code>SET n.status</code> — one hit, inside <code>UpdateStatus</code>; <code>UpdateNode</code>'s merge uses <code>SET n += </code> and refuses status keys. Error messages all lead with a <code>snake_case_code:</code>. Seed runs clean with eli10s on every surfaced node.</p></div>
       <div class="callout war"><h4>Why it exists</h4><p>The eli10 layer sounds cosmetic until you watch an operator triage a graph of 400 nodes at 11pm. The PCC renders the eli10 as the <em>leading</em> line of every card — and renders a visible "no plain-English summary yet" badge when it's missing. Absence is surfaced, never hidden; that badge is the entire backfill-pressure mechanism. Governance: <code>ADR-eli10-pcc-nodes-ASXB</code>.</p></div>
     </div>
   </details>
@@ -1331,7 +1401,7 @@ func validateNoCallerStatus(n Node) error {
 &lt;!-- HOW this is enforced: name the lint / hook / gate / review.
      "manual review only" is legal but flagged as weak. --&gt;</code></pre></div>
           <p>Copy it for <code>pdr</code>, <code>ddr</code>, <code>wow</code>, <code>cir</code> (change the meta tag name). The <b>Compliance section is the teeth</b>: every record must say how reality is kept in line with it.</p></li>
-        <li><p><strong>Author your first real record.</strong> Use an ID from lesson 2.2's allocator (<code>allocate --type adr --title "SQLite is the mini-DDE graph store"</code>), then write the record for a decision you already made: ADR "SQLite is the mini-DDE graph store" — context (single-user teaching clone, no server dependency), decision (modernc.org/sqlite, one file, project-scoped rows), consequences (no concurrent writers; fine for one operator), compliance ("manual for now; week 6 adds a lint"). Set status <code>Accepted</code> — you're the decision authority here.</p></li>
+        <li><p><strong>Author your first real record.</strong> Use an ID from lesson 2.2's allocator (<code>allocate --type adr --title "Memgraph is the mini-DDE graph store"</code>), then write the record for a decision you already made: ADR "Memgraph is the mini-DDE graph store" — context (a teaching clone that should mirror the real system's Cypher/Bolt stack with near-zero ops), decision (Memgraph Community in one Docker container, <code>neo4j-go-driver/v5</code>, one label per node type, project scoping by property), consequences (Docker must be running; in-memory engine with snapshots in a named volume — the graph is treated as rebuildable from the idempotent seed), compliance ("manual for now; week 6 adds a lint"). Set status <code>Accepted</code> — you're the decision authority here.</p></li>
         <li><p><strong>Author a PDR for the capstone product</strong> so week 8 has governing authority ready: <code>PDR "Mini contract-to-cash flow"</code> — the product does: book a contract, issue invoices, chase receivables to settlement; lifecycle spine <code>setup → active → in fulfilment → financially closing → closed</code> keyed by a fake SAP Contract Number. Status: <code>Accepted</code>.</p></li>
         <li><p><strong>Feel the disambiguators.</strong> For each of these, decide the record type before revealing the answer by reasoning from the definitions: (a) "events are ordered per contract by a hashed key" — <em>DDR (how data flows)</em>; (b) "no code merges without a passing gate" — <em>WoW (how the team operates)</em>; (c) "the frontend mirrors the C2C three-zone shell" — <em>ADR or PDR? It governs how the system is built for users → PDR if about behavior, ADR if about implementation structure. Write the sentence both ways and notice which record it wants.</em></p></li>
       </ol>
@@ -1353,11 +1423,12 @@ func validateNoCallerStatus(n Node) error {
           <div class="code" data-file><span class="fname">server/internal/graph/decisions.go</span><pre><code>package graph
 
 import (
+	"context"
 	"fmt"
 	"os"
 )
 
-func (s *Store) RegisterDecision(id, docType, path, title, eli10 string) error {
+func (s *Store) RegisterDecision(ctx context.Context, id, docType, path, title, eli10 string) error {
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("decision_file_missing: %s: %w", path, err)
@@ -1365,7 +1436,7 @@ func (s *Store) RegisterDecision(id, docType, path, title, eli10 string) error {
 	if len(body) &gt; 256&lt;&lt;10 {
 		body = body[:256&lt;&lt;10]
 	}
-	return s.CreateNode(Node{
+	return s.CreateNode(ctx, Node{
 		ID: id, Type: "Decision", Status: "Proposed",
 		Props: map[string]any{
 			"doc_type": docType, "path": path, "title": title,
@@ -1376,14 +1447,14 @@ func (s *Store) RegisterDecision(id, docType, path, title, eli10 string) error {
 
 // SupersedeDecision retires old in favor of new: both nodes updated,
 // SUPERSEDES edge minted, one transaction of intent.
-func (s *Store) SupersedeDecision(oldID, newID string) error {
-	if _, err := s.GetNode(newID); err != nil {
+func (s *Store) SupersedeDecision(ctx context.Context, oldID, newID string) error {
+	if _, err := s.GetNode(ctx, newID); err != nil {
 		return fmt.Errorf("superseding_record_missing: %w", err)
 	}
-	if err := s.CreateEdge(newID, oldID, EdgeSupersedes); err != nil {
+	if err := s.CreateEdge(ctx, newID, oldID, EdgeSupersedes); err != nil {
 		return err
 	}
-	if err := s.UpdateStatus(oldID, "Superseded",
+	if err := s.UpdateStatus(ctx, oldID, "Superseded",
 		"superseded by "+newID); err != nil {
 		return err
 	}
@@ -1392,7 +1463,7 @@ func (s *Store) SupersedeDecision(oldID, newID string) error {
           <p>Add a Decision transition map to <code>Transitions</code>: <code>"" → Proposed; Proposed → {Accepted, Deprecated}; Accepted → {Superseded, Deprecated}</code>. Note what that map forbids: editing an Accepted record back to Proposed, and superseding something that was never accepted (a never-accepted record is Deprecated instead).</p></li>
         <li><p><strong>Register both week-3.1 records</strong> via a new CLI command <code>register-decision</code>, then <code>update-status … --to Accepted --reason "DA approval (that's you)"</code>. Check the changelog — your governance now has an audit trail.</p></li>
         <li><p><strong>Wire authority to work.</strong> Your <code>booking-core</code> Responsibility already carries <code>GOVERNED_BY</code> from lesson 2.3 — repoint or add edges so it's governed by the capstone PDR. Query it: <code>neighbors --id booking-core --dir out --type GOVERNED_BY</code>. That query is the whole reason the mirror exists.</p></li>
-        <li><p><strong>Do one full supersession end to end.</strong> Decide something small differently (e.g. "the CLI reads project id from env" → new ADR: "project id comes from .minidde/project.yaml, env is the override"). Allocate the new ID; write the new file with <code>&lt;supersedes&gt;</code>; edit the old file's <code>&lt;superseded-by&gt;</code> + status; register the new node; call <code>SupersedeDecision(old, new)</code>; commit both files together. Read the git diff — that shape (two files, one commit, symmetric pointers) is the discipline.</p></li>
+        <li><p><strong>Do one full supersession end to end.</strong> Decide something small differently (e.g. "the CLI reads project id from env" → new ADR: "project id comes from .minidde/project.yaml" — exactly what week 4 will implement; its <code>MINIDDE_CONFIG</code> variable overrides the config <em>path</em>, not the project id). Allocate the new ID; write the new file with <code>&lt;supersedes&gt;</code>; edit the old file's <code>&lt;superseded-by&gt;</code> + status; register the new node; call <code>SupersedeDecision(old, new)</code>; commit both files together. Read the git diff — that shape (two files, one commit, symmetric pointers) is the discipline.</p></li>
       </ol>
       <div class="callout check"><h4>Checkpoint</h4><p><code>ls --type Decision</code> shows your records with statuses; the superseded pair points at each other in both the files and the graph; the changelog explains every status move.</p></div>
       <div class="callout war"><h4>Why it exists</h4><p>PR 30371, 2026-06-01: merged code cited <code>Builder ADR-local-builder-dev-N7GR</code> — but the ADR file was never <code>git add</code>-ed. Every other clone had code governed by a decision that did not exist. Three existing gates each had a blind spot; the fix was a new Stop hook blocking session end on untracked Accepted records. Dual-homing only works when both homes actually get written.</p></div>
@@ -1480,7 +1551,10 @@ exit $((fails &gt; 0))</code></pre></div></li>
         <li><p><strong>Implement <code>RegisterFinding</code></strong> with the field contract and bundled edges:</p>
           <div class="code" data-file><span class="fname">server/internal/graph/findings.go</span><pre><code>package graph
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 var severities = map[string]bool{
 	"critical": true, "high": true, "medium": true, "low": true,
@@ -1492,7 +1566,7 @@ type FindingInput struct {
 	Eli10                                        string
 }
 
-func (s *Store) RegisterFinding(in FindingInput) (string, error) {
+func (s *Store) RegisterFinding(ctx context.Context, in FindingInput) (string, error) {
 	switch {
 	case len(in.Title) &lt; 10:
 		return "", fmt.Errorf("finding_title_thin: &gt;=10 chars — name the problem")
@@ -1507,11 +1581,11 @@ func (s *Store) RegisterFinding(in FindingInput) (string, error) {
 	case in.Classification == "":
 		return "", fmt.Errorf("finding_classification_required: e.g. ambiguous_spec, defect, missing_contract, pattern_violation")
 	}
-	id, err := s.AllocateID("Finding", "Finding", in.Title, "OPEN")
+	id, err := s.AllocateID(ctx, "Finding", "Finding", in.Title, "OPEN")
 	if err != nil {
 		return "", err
 	}
-	err = s.patchAndLink(id, map[string]any{
+	err = s.patchAndLink(ctx, id, map[string]any{
 		"title": in.Title, "description": in.Description,
 		"evidence": in.Evidence, "recommendation": in.Recommendation,
 		"severity": in.Severity, "classification": in.Classification,
@@ -1522,51 +1596,57 @@ func (s *Store) RegisterFinding(in FindingInput) (string, error) {
 	})
 	if err != nil {
 		// verify-and-rollback: a finding without its edges must not exist.
-		s.db.Exec(`DELETE FROM nodes WHERE id=? AND project_id=?`, id, s.projectID)
+		s.DeleteNode(ctx, id)
 		return "", fmt.Errorf("finding_edges_failed (rolled back): %w", err)
 	}
 	return id, nil
 }</code></pre></div>
-          <p>Refactor small helpers as needed: generalize lesson 2.2's allocator into <code>AllocateID(nodeType, prefix, title, initialStatus)</code> so Findings mint <code>Finding-&lt;slug&gt;-&lt;XXXX&gt;</code>, and add <code>patchAndLink(id, props, edges)</code> (UpdateNode + CreateEdge loop). Callers never supply finding IDs — <b>server allocates, always</b>.</p></li>
-        <li><p><strong>Implement the lifecycle verbs.</strong> <code>ResolveFinding(id, resolution, resolvedBy, verificationNote)</code>: reject unless current status is OPEN, resolution ≥50 chars, note ≥30 chars, then <code>UpdateStatus(id, "RESOLVED", …)</code> and patch the resolution fields. <code>ConfirmFinding(id, confirmedBy)</code>: RESOLVED→CONFIRMED. <code>RejectFinding(id, rejectedBy, reason)</code>: only from OPEN and only when <code>rejectedBy == "decision-authority"</code> — agents never silently kill findings.</p></li>
+          <p>Refactor small helpers as needed: generalize lesson 2.2's allocator into <code>AllocateID(ctx, nodeType, prefix, title, initialStatus)</code> (same MERGE + ON-CREATE-marker statement, label and prefix parameterized from the allowlist) so Findings mint <code>Finding-&lt;slug&gt;-&lt;XXXX&gt;</code>, and add <code>patchAndLink(ctx, id, props, edges)</code> (UpdateNode + CreateEdge loop). Callers never supply finding IDs — <b>server allocates, always</b>.</p></li>
+        <li><p><strong>Implement the lifecycle verbs.</strong> <code>ResolveFinding(ctx, id, resolution, resolvedBy, verificationNote)</code>: reject unless current status is OPEN, resolution ≥50 chars, note ≥30 chars, then <code>UpdateStatus(ctx, id, "RESOLVED", …)</code> and patch the resolution fields. <code>ConfirmFinding(ctx, id, confirmedBy)</code>: RESOLVED→CONFIRMED. <code>RejectFinding(ctx, id, rejectedBy, reason)</code>: only from OPEN and only when <code>rejectedBy == "decision-authority"</code> — agents never silently kill findings.</p></li>
         <li><p><strong>Implement escalations as tool-owned lifecycle:</strong></p>
           <div class="code" data-file><span class="fname">server/internal/graph/escalations.go</span><pre><code>package graph
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
-func (s *Store) RegisterEscalation(question string, options []string, eli10 string) (string, error) {
+func (s *Store) RegisterEscalation(ctx context.Context, question string, options []string, eli10 string) (string, error) {
 	if question == "" || len(options) &lt; 2 {
 		return "", fmt.Errorf("escalation_needs_options: a DA question " +
 			"carries &gt;=2 explicit options — never an open 'what should I do?'")
 	}
-	id, err := s.AllocateID("Escalation", "Escalation", question, "pending")
+	id, err := s.AllocateID(ctx, "Escalation", "Escalation", question, "pending")
 	if err != nil {
 		return "", err
 	}
-	return id, s.UpdateNode(id, map[string]any{
+	// options is a []string — serializeProps passes only scalars
+	// through, so this lands in the graph as ONE JSON string
+	// (`["a","b"]`); parse it back if you ever need the list.
+	return id, s.UpdateNode(ctx, id, map[string]any{
 		"question": question, "options": options, "eli10": eli10,
 	})
 }
 
 // ResolveEscalation refuses unless status is exactly "pending" —
 // the lifecycle is owned by this function, not a transition map.
-func (s *Store) ResolveEscalation(id, chosen, resolvedBy string) error {
-	n, err := s.GetNode(id)
+func (s *Store) ResolveEscalation(ctx context.Context, id, chosen, resolvedBy string) error {
+	n, err := s.GetNode(ctx, id)
 	if err != nil {
 		return err
 	}
 	if n.Status != "pending" {
 		return fmt.Errorf("escalation_not_pending: %s is %q", id, n.Status)
 	}
-	if err := s.UpdateNode(id, map[string]any{
+	if err := s.UpdateNode(ctx, id, map[string]any{
 		"resolution": chosen, "resolved_by": resolvedBy,
 	}); err != nil {
 		return err
 	}
-	return s.UpdateStatus(id, "resolved", "DA chose: "+chosen)
+	return s.UpdateStatus(ctx, id, "resolved", "DA chose: "+chosen)
 }</code></pre></div></li>
         <li><p><strong>Use it for real.</strong> Register a genuine finding from your own build so far (you have one — everyone does; e.g. "CLI create-node accepts empty --id"). Resolve it with a real fix and a verification note that names <em>how you verified</em>. Then register an escalation with two options for a real open question (e.g. "should the capstone use one DB or three?"), and resolve it as the DA.</p></li>
-        <li><p><strong>Read the deferral doctrine</strong> (below) and add the one mechanical piece: a <code>CheckDeferral(findingID)</code> that returns true only if an <code>ExternalDependency</code> node exists with a <code>BLOCKS</code> edge to the finding — the precondition for the DEFERRED status ever being legal.</p></li>
+        <li><p><strong>Read the deferral doctrine</strong> (below) and add the one mechanical piece: a <code>CheckDeferral(ctx, findingID)</code> that returns true only if an <code>ExternalDependency</code> node exists with a <code>BLOCKS</code> edge to the finding — the precondition for the DEFERRED status ever being legal.</p></li>
       </ol>
       <div class="callout note">
         <h4>Doctrine: zero internal deferrals</h4>
@@ -1618,7 +1698,7 @@ import (
 
 type Config struct {
 	ProjectID string `yaml:"project_id"`
-	DBPath    string `yaml:"db_path"`
+	BoltURI   string `yaml:"bolt_uri"`
 }
 
 // Load: MINIDDE_CONFIG env → default .minidde/project.yaml.
@@ -1639,12 +1719,12 @@ func Load() (Config, error) {
 	if c.ProjectID == "" {
 		return Config{}, fmt.Errorf("config_invalid: project_id is required")
 	}
-	if c.DBPath == "" {
-		c.DBPath = "minidde.db"
+	if c.BoltURI == "" {
+		c.BoltURI = "bolt://localhost:7687"
 	}
 	return c, nil
 }</code></pre></div>
-          <p>Add <code>db_path: "minidde.db"</code> to your <code>.minidde/project.yaml</code>.</p></li>
+          <p>Your <code>.minidde/project.yaml</code> already carries both keys from week 1 — the loader is where defaults and validation live, not the callers.</p></li>
         <li><p><strong>Create the registry skeleton and the <code>mcp</code> subcommand:</strong></p>
           <div class="code" data-file><span class="fname">server/internal/tools/registry.go</span><pre><code>package tools
 
@@ -1666,11 +1746,11 @@ func RegisterAll(srv *server.MCPServer, st *graph.Store) {
 	if err != nil {
 		return err
 	}
-	st, err := graph.Open(cfg.DBPath, cfg.ProjectID)
+	st, err := graph.Open(ctx, cfg.BoltURI, cfg.ProjectID)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer st.Close(ctx)
 	srv := server.NewMCPServer("mini-dde", "0.1.0")
 	tools.RegisterAll(srv, st)
 	return server.ServeStdio(srv)</code></pre></div>
@@ -1704,7 +1784,7 @@ func registerQueryTools(srv *server.MCPServer, st *graph.Store) {
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			n, err := st.GetNode(id)
+			n, err := st.GetNode(ctx, id)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -1754,7 +1834,7 @@ func registerQueryTools(srv *server.MCPServer, st *graph.Store) {
 	//         query_all(node_type, status?)
 	//         neighbors(id, dir, type?)
 }</code></pre></div>
-          <p>For <code>create_node</code>'s handler, decode <code>props</code> with <code>req.GetArguments()["props"]</code> (assert to <code>map[string]any</code>), map the <code>edges</code> array into <code>[]graph.BundledEdge</code>, and call <code>CreateNodeWithEdges</code>. Every store error goes back via <code>NewToolResultError(err.Error())</code> — your structured codes ride through intact.</p></li>
+          <p>For <code>create_node</code>'s handler, decode <code>props</code> with <code>req.GetArguments()["props"]</code> (assert to <code>map[string]any</code>), map the <code>edges</code> array into <code>[]graph.BundledEdge</code>, and call <code>CreateNodeWithEdges(ctx, …)</code> — the handler's own <code>ctx</code> threads straight through to the store. Every store error goes back via <code>NewToolResultError(err.Error())</code> — your structured codes ride through intact.</p></li>
         <li><p><strong>Make <code>update_status</code> teach its own remedy.</strong> When <code>ValidateTransition</code> rejects, wrap the message: append the list of legal next statuses from the map. An agent that reads <code>invalid_transition: … legal from BUILDING: [BUILT IN_REVIEW BLOCKED]</code> self-corrects in one turn instead of three.</p></li>
         <li><p><strong>Add <code>register_decision</code> and <code>allocate_decision_id</code></strong> in a <code>governance.go</code> group — thin wrappers over week 3's store methods. The allocator tool is how agents will mint CIR/xDR ids in week 7's skills; caller-supplied decision ids get <code>NewToolResultError("caller_supplied_id_forbidden: ids are server-allocated")</code>.</p></li>
         <li><p><strong>Re-run the inspector</strong> and drive a full mini-flow by hand: allocate a decision id → create a Responsibility governed by it → walk it NOT_STARTED→DESIGNING with reasons → query it back. You are now doing, by hand, exactly what an agent will do autonomously in week 7.</p></li>
@@ -1766,61 +1846,66 @@ func registerQueryTools(srv *server.MCPServer, st *graph.Store) {
   <details class="lesson" data-week="week4" id="l43">
     <summary><span class="lnum">4.3</span><span class="ltitle">Search &amp; the graph-first habit</span><span class="lconcept">search</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l43" aria-label="Mark lesson 4.3 done"></label><span class="chev">▶</span></summary>
     <div class="lbody">
-      <p class="lead">"Query the graph before searching files" only works if the graph is queryable by <em>meaning-ish</em> lookups, not just by id. The real system has two search tools — keyword full-text and semantic/vector — with a routing rule (semantic for concepts, keyword for exact tokens, always bound the result set). You'll build the keyword half with SQLite FTS5 and encode the routing rule as agent context.</p>
+      <p class="lead">"Query the graph before searching files" only works if the graph is queryable by <em>meaning-ish</em> lookups, not just by id. The real system has two search tools — keyword full-text and semantic/vector — with a routing rule (semantic for concepts, keyword for exact tokens, always bound the result set). You'll build the keyword half as a search property maintained at write time and queried in Cypher, and encode the routing rule as agent context.</p>
       <div class="callout real">
         <h4>In the real system</h4>
         <p><code>search</code> (full-text, returns full node bodies — always pass <code>node_types</code> and a small <code>limit</code>) vs <code>semantic_search</code> (Qdrant vectors, lighter payloads, the default for concept lookups) — the selection discipline is <code>.claude/rules/bld-mcp-routing.md</code> § "Tool selection". The learning tools (<code>register_finding</code>, <code>register_escalation</code>, <code>resolve_*</code>) live in their own registry group.</p>
       </div>
       <h4>Tasks</h4>
       <ol class="steps">
-        <li><p><strong>Add an FTS5 index</strong> kept in sync at write time. In <code>store.go</code>'s schema:</p>
-          <div class="code"><pre><code>CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts
-  USING fts5(id UNINDEXED, project_id UNINDEXED, body);</code></pre></div>
-          <p>At the end of <code>CreateNode</code> and <code>UpdateNode</code>, upsert the searchable text (delete-then-insert by id is fine):</p>
+        <li><p><strong>Maintain a search index at write time.</strong> The idea to keep from full-text engines: the index is maintained <em>when you write</em>, not scanned into existence per query. Here it's one lowercase <code>_search</code> property per node — call <code>indexNode</code> at the end of <code>CreateNode</code> and <code>UpdateNode</code>, and add a <code>case "_search":</code> skip to <code>nodeFromRecord</code> so the index never leaks into <code>Props</code>:</p>
           <div class="code" data-file><span class="fname">server/internal/graph/search.go</span><pre><code>package graph
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
-func (s *Store) indexNode(n Node) {
+// indexNode maintains a lowercase _search property — a one-property
+// stand-in for a full-text index, refreshed on every write.
+func (s *Store) indexNode(ctx context.Context, n Node) {
 	body, _ := json.Marshal(n.Props)
-	s.db.Exec(`DELETE FROM nodes_fts WHERE id = ? AND project_id = ?`,
-		n.ID, s.projectID)
-	s.db.Exec(`INSERT INTO nodes_fts (id, project_id, body) VALUES (?, ?, ?)`,
-		n.ID, s.projectID, n.ID+" "+string(body))
+	s.run(ctx, `MATCH (n {id: $id, project_id: $pid})
+		SET n._search = $text`, map[string]any{
+		"id":   n.ID,
+		"text": strings.ToLower(n.ID + " " + string(body)),
+	})
 }
 
-// Search: keyword full-text, bounded. limit &lt;= 20 — an unbounded
-// search result is a context-window attack on your own agent.
-func (s *Store) Search(query, nodeType string, limit int) ([]Node, error) {
+// Search: keyword lookup over _search, bounded. limit &lt;= 20 — an
+// unbounded search result is a context-window attack on your own
+// agent.
+func (s *Store) Search(ctx context.Context, query, nodeType string, limit int) ([]Node, error) {
 	if limit &lt;= 0 || limit &gt; 20 {
 		limit = 10
 	}
-	rows, err := s.db.Query(`
-		SELECT f.id FROM nodes_fts f
-		JOIN nodes n ON n.id = f.id AND n.project_id = f.project_id
-		WHERE f.project_id = ? AND nodes_fts MATCH ?
-		  AND (? = '' OR n.type = ?)
-		LIMIT ?`, s.projectID, query, nodeType, nodeType, limit)
+	res, err := s.run(ctx, `
+		MATCH (n {project_id: $pid})
+		WHERE n._search CONTAINS toLower($q)
+		  AND ($type = '' OR $type IN labels(n))
+		RETURN labels(n)[0] AS type, n
+		ORDER BY n.id LIMIT $limit`, map[string]any{
+		"q": query, "type": nodeType, "limit": limit,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
-	defer rows.Close()
 	var out []Node
-	for rows.Next() {
-		var id string
-		rows.Scan(&amp;id)
-		if n, err := s.GetNode(id); err == nil {
-			out = append(out, n)
+	for _, rec := range res.Records {
+		n, err := nodeFromRecord(rec)
+		if err != nil {
+			return nil, err
 		}
+		out = append(out, n)
 	}
-	return out, rows.Err()
-}</code></pre></div></li>
+	return out, nil
+}</code></pre></div>
+          <p>(A scan-with-CONTAINS is honest at course scale; Memgraph also ships an experimental text-search module, and the real system's semantic half rides Qdrant vectors — both are upgrades to this same seam, not different ideas.)</p></li>
         <li><p><strong>Expose the learning group as tools:</strong> <code>search(query, node_type?, limit?)</code>, <code>register_finding</code> (all six fields required in the schema — let the schema teach the contract), <code>resolve_finding</code>, <code>confirm_finding</code>, <code>register_escalation</code>, <code>resolve_escalation</code>, <code>check_deferral</code>. All thin wrappers over week 3's store methods, in <code>server/internal/tools/learning.go</code>.</p></li>
         <li><p><strong>Add <code>query_responsibility</code></strong> — the first <em>composite</em> read: given an id, return the node + its work packages (via <code>BELONGS_TO</code> in-edges) + governing decisions (<code>GOVERNED_BY</code> out-edges) + open findings (<code>AFFECTS</code> in-edges, status OPEN). One tool call answering "tell me everything about this work" is the seed of week 5's context packages.</p></li>
-        <li><p><strong>Reindex your seed</strong> (drop <code>minidde.db</code>, re-run seed + registrations) and verify in the inspector: <code>search</code> for "booking" finds the Responsibility and the PDR; with <code>node_type: "Decision"</code> only the PDR.</p></li>
+        <li><p><strong>Reindex your seed</strong> (wipe the project in mgconsole — <code>MATCH (n {project_id: 'mini-c2c'}) DETACH DELETE n;</code> — then re-run seed + registrations) and verify in the inspector: <code>search</code> for "booking" finds the Responsibility and the PDR; with <code>node_type: "Decision"</code> only the PDR.</p></li>
       </ol>
       <div class="callout check"><h4>Checkpoint</h4><p><code>search("contract", "", 10)</code> returns bounded, relevant results; <code>query_responsibility("booking-core")</code> returns node + WPs + decisions + findings in one payload.</p></div>
     </div>
@@ -1851,7 +1936,7 @@ func (s *Store) Search(query, nodeType string, limit int) ([]Node, error) {
           <div class="code" data-file><span class="fname">.claude/rules/graph-first.md</span><pre><code># Knowledge Graph First
 
 &lt;implements&gt;
-  &lt;xdr&gt;ADR-sqlite-mini-dde-graph-&lt;your-suffix&gt;&lt;/xdr&gt;
+  &lt;xdr&gt;ADR-memgraph-is-mini-&lt;your-suffix&gt;&lt;/xdr&gt;
 &lt;/implements&gt;
 
 The mini-DDE graph is the source of truth. Query it before searching files.
@@ -1876,7 +1961,7 @@ finding for the worst one you find, severity medium, affecting booking-core."</c
         <li><p><strong>Watch for the two classic failures</strong> and enjoy your guards catching them: the agent inventing its own finding id (blocked — server allocates), and the agent trying <code>update_node</code> with a status (blocked with the remedy in the message). When a guard fires, read the transcript: the structured error told the agent how to self-correct. That's the design working.</p></li>
         <li><p><strong>Commit everything</strong>, including <code>.mcp.json</code> and the rules file — agent context is code.</p></li>
       </ol>
-      <div class="callout check"><h4>Checkpoint — end of week 4</h4><p>All three prompts succeed with the agent using only MCP tools (no sqlite3 shell calls — check the transcript). <code>ls --type Finding</code> shows the agent's finding, edges intact, id server-minted.</p></div>
+      <div class="callout check"><h4>Checkpoint — end of week 4</h4><p>All three prompts succeed with the agent using only MCP tools (no shell detours into mgconsole — check the transcript). <code>ls --type Finding</code> shows the agent's finding, edges intact, id server-minted.</p></div>
       <div class="callout war"><h4>Why it exists</h4><p>Why ban piping JSON-RPC into the binary when tools exist? Because a second access path is a second place where validation can drift — the real rule exists because agents <em>did</em> discover <code>echo '{"jsonrpc"...}' | go run .</code> as a workaround when a tool was missing. Every capability gap becomes an escalation, never a bypass.</p></div>
     </div>
   </details>
@@ -1912,6 +1997,7 @@ finding for the worst one you find, severity medium, affecting booking-core."</c
           <div class="code" data-file><span class="fname">server/internal/graph/schema.go</span><pre><code>package graph
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -1966,10 +2052,10 @@ func ValidateAgainst(schemaJSON string, payload []byte) (bool, []SchemaError, er
 
 func anyToStrings(in []string) []string { return in }
 
-// ValidateEventPayload: resolve the node (Event first, Contract
+// ValidateEventPayload: resolve the node (Contract first, Event
 // fallback — the query_contract order), pick its schema, validate.
-func (s *Store) ValidateEventPayload(id string, payload []byte) (bool, []SchemaError, error) {
-	n, err := s.GetNode(id)
+func (s *Store) ValidateEventPayload(ctx context.Context, id string, payload []byte) (bool, []SchemaError, error) {
+	n, err := s.GetNode(ctx, id)
 	if err != nil {
 		return false, nil, err
 	}
@@ -2012,78 +2098,87 @@ func (s *Store) ValidateEventPayload(id string, payload []byte) (bool, []SchemaE
 $M link --src booking-core     --dst evt-contract-booked --type PRODUCES
 $M link --src billing-core     --dst evt-contract-booked --type CONSUMES
 $M link --src collections-core --dst evt-contract-booked --type CONSUMES</code></pre></div>
-          <p>Add the remaining capstone events now (schemas can start minimal and tighten in week 8): <code>evt-invoice-issued</code> (billing → collections, booking), <code>evt-receivable-settled</code> (collections → billing, booking), <code>evt-contract-closed</code> (booking → all).</p></li>
+          <p>Create the remaining capstone event <em>nodes</em> now — <code>evt-booking-completed</code>, <code>evt-invoice-issued</code>, <code>evt-receivable-settled</code>, <code>evt-contract-closed</code> (schemas can start minimal; week 8 tightens all five) — but wire <b>no further PRODUCES/CONSUMES edges yet</b>. The rest of the choreography goes in during 5.3, where it teaches the planner's sharpest lesson.</p></li>
         <li><p><strong>Give each Responsibility work packages</strong> with a <code>sequence</code> prop — booking: <code>wp-book-api</code> (1), <code>wp-book-events</code> (2); billing: <code>wp-bill-consume</code> (1), <code>wp-bill-issue</code> (2); collections: <code>wp-col-consume</code> (1), <code>wp-col-settle</code> (2). Each <code>BELONGS_TO</code> its Responsibility.</p></li>
         <li><p><strong>Derive choreography dependencies in code</strong> — the heart of this lesson:</p>
           <div class="code" data-file><span class="fname">server/internal/graph/choreography.go</span><pre><code>package graph
 
-import "sort"
+import (
+	"context"
+	"sort"
+
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
+)
+
+// seqOf normalizes the sequence property: JSON hands you float64,
+// Bolt hands you int64 — never assert one blindly.
+func seqOf(n Node) int64 {
+	switch v := n.Props["sequence"].(type) {
+	case int64:
+		return v
+	case float64:
+		return int64(v)
+	}
+	return 0
+}
 
 // wpsOf returns a responsibility's WorkPackages ordered by sequence
 // (id tie-break) — determinism matters: identical graphs must yield
 // identical plans.
-func (s *Store) wpsOf(respID string) ([]Node, error) {
-	edges, err := s.Neighbors(respID, "in", EdgeBelongsTo)
+func (s *Store) wpsOf(ctx context.Context, respID string) ([]Node, error) {
+	edges, err := s.Neighbors(ctx, respID, "in", EdgeBelongsTo)
 	if err != nil {
 		return nil, err
 	}
 	var wps []Node
 	for _, e := range edges {
-		n, err := s.GetNode(e.Src)
+		n, err := s.GetNode(ctx, e.Src)
 		if err != nil {
 			return nil, err
 		}
 		wps = append(wps, n)
 	}
 	sort.Slice(wps, func(i, j int) bool {
-		si, _ := wps[i].Props["sequence"].(float64)
-		sj, _ := wps[j].Props["sequence"].(float64)
-		if si != sj {
-			return si &lt; sj
+		if seqOf(wps[i]) != seqOf(wps[j]) {
+			return seqOf(wps[i]) &lt; seqOf(wps[j])
 		}
 		return wps[i].ID &lt; wps[j].ID
 	})
 	return wps, nil
 }
 
-// ChoreographyDeps derives WP→WP dependencies from PRODUCES/CONSUMES:
-// for each event, each consumer's FIRST wp depends on each producer's
+// ChoreographyDeps derives WP→WP dependencies from PRODUCES/CONSUMES.
+// The MATCH below is the real wave planner's pattern VERBATIM
+// (builder/server/internal/graph/wave.go:167-169) — one line of
+// Cypher expressing "consumer depends on producer through an event".
+// For each pair: the consumer's FIRST wp depends on the producer's
 // LAST wp.
-func (s *Store) ChoreographyDeps() (map[string][]string, error) {
-	deps := map[string][]string{} // wp → the wps it depends on
-	events, err := s.QueryAll("Event", "")
+func (s *Store) ChoreographyDeps(ctx context.Context) (map[string][]string, error) {
+	res, err := s.run(ctx, `
+		MATCH (producer:Responsibility)-[:PRODUCES]-&gt;(e:Event)&lt;-[:CONSUMES]-(consumer:Responsibility)
+		WHERE producer.project_id = $pid AND consumer.project_id = $pid
+		  AND producer.id &lt;&gt; consumer.id
+		RETURN DISTINCT producer.id AS p, consumer.id AS c`, nil)
 	if err != nil {
 		return nil, err
 	}
-	for _, evt := range events {
-		producers, err := s.Neighbors(evt.ID, "in", EdgeProduces)
+	deps := map[string][]string{} // wp → the wps it depends on
+	for _, rec := range res.Records {
+		p, _, _ := neo4j.GetRecordValue[string](rec, "p")
+		c, _, _ := neo4j.GetRecordValue[string](rec, "c")
+		pWPs, err := s.wpsOf(ctx, p)
 		if err != nil {
 			return nil, err
 		}
-		consumers, err := s.Neighbors(evt.ID, "in", EdgeConsumes)
+		cWPs, err := s.wpsOf(ctx, c)
 		if err != nil {
 			return nil, err
 		}
-		for _, c := range consumers {
-			for _, p := range producers {
-				if c.Src == p.Src {
-					continue // self-loops never count
-				}
-				pWPs, err := s.wpsOf(p.Src)
-				if err != nil {
-					return nil, err
-				}
-				cWPs, err := s.wpsOf(c.Src)
-				if err != nil {
-					return nil, err
-				}
-				if len(pWPs) == 0 || len(cWPs) == 0 {
-					continue
-				}
-				first, last := cWPs[0].ID, pWPs[len(pWPs)-1].ID
-				deps[first] = append(deps[first], last)
-			}
+		if len(pWPs) == 0 || len(cWPs) == 0 {
+			continue
 		}
+		first, last := cWPs[0].ID, pWPs[len(pWPs)-1].ID
+		deps[first] = append(deps[first], last)
 	}
 	return deps, nil
 }</code></pre></div></li>
@@ -2107,6 +2202,7 @@ func (s *Store) ChoreographyDeps() (map[string][]string, error) {
           <div class="code" data-file><span class="fname">server/internal/graph/wave.go</span><pre><code>package graph
 
 import (
+	"context"
 	"fmt"
 	"sort"
 )
@@ -2123,8 +2219,8 @@ type WavePlan struct {
 	Cycles         []string `json:"cycles,omitempty"`
 }
 
-func (s *Store) ComputeWavePlan() (WavePlan, error) {
-	wps, err := s.QueryAll("WorkPackage", "")
+func (s *Store) ComputeWavePlan(ctx context.Context) (WavePlan, error) {
+	wps, err := s.QueryAll(ctx, "WorkPackage", "")
 	if err != nil {
 		return WavePlan{}, err
 	}
@@ -2141,7 +2237,7 @@ func (s *Store) ComputeWavePlan() (WavePlan, error) {
 
 	// Source 1: explicit DEPENDS_ON edges.
 	for _, wp := range wps {
-		out, err := s.Neighbors(wp.ID, "out", EdgeDependsOn)
+		out, err := s.Neighbors(ctx, wp.ID, "out", EdgeDependsOn)
 		if err != nil {
 			return WavePlan{}, err
 		}
@@ -2150,7 +2246,7 @@ func (s *Store) ComputeWavePlan() (WavePlan, error) {
 		}
 	}
 	// Source 2: choreography (lesson 5.2).
-	choreo, err := s.ChoreographyDeps()
+	choreo, err := s.ChoreographyDeps(ctx)
 	if err != nil {
 		return WavePlan{}, err
 	}
@@ -2160,12 +2256,12 @@ func (s *Store) ComputeWavePlan() (WavePlan, error) {
 		}
 	}
 	// Source 3: implicit sequence within each Responsibility.
-	resps, err := s.QueryAll("Responsibility", "")
+	resps, err := s.QueryAll(ctx, "Responsibility", "")
 	if err != nil {
 		return WavePlan{}, err
 	}
 	for _, r := range resps {
-		seq, err := s.wpsOf(r.ID)
+		seq, err := s.wpsOf(ctx, r.ID)
 		if err != nil {
 			return WavePlan{}, err
 		}
@@ -2238,14 +2334,14 @@ func (s *Store) ComputeWavePlan() (WavePlan, error) {
 		}
 		plan.Waves = append(plan.Waves, Wave{Number: w, WorkPackages: byWave[w]})
 		for _, wp := range byWave[w] {
-			s.UpdateNode(wp, map[string]any{"wave": w})
+			s.UpdateNode(ctx, wp, map[string]any{"wave": w})
 		}
 	}
 	plan.TotalWaves, plan.MaxParallelism = maxW, maxPar
 	return plan, nil
 }</code></pre></div></li>
         <li><p><strong>Expose it as the <code>compute_wave_plan</code> tool</strong> and run it on the capstone graph. Expected shape: wave 1 = <code>wp-book-api</code>; wave 2 = <code>wp-book-events</code>; wave 3 = the two consume-WPs <em>in parallel</em>; wave 4 = <code>wp-bill-issue</code>, <code>wp-col-settle</code>. Draw it on paper first, then compare.</p></li>
-        <li><p><strong>Manufacture a cycle</strong> — <code>link --src wp-book-api --dst wp-col-settle --type DEPENDS_ON</code> — and re-run. You must get the loud error naming the members, and (assert!) no <code>wave</code> props were written. Remove the edge; plan returns.</p></li>
+        <li><p><strong>Hit a real cycle — then understand it.</strong> Wire the rest of the runtime choreography exactly as mini-C2C will run it: billing <code>PRODUCES evt-invoice-issued</code>, consumed by collections <em>and</em> booking; collections <code>PRODUCES evt-receivable-settled</code>, consumed by billing <em>and</em> booking. Re-run the planner: <code>dependency_cycle</code> naming <b>all six WPs</b> — and (assert!) no <code>wave</code> props were written. Nothing is wrong with the runtime design: services legitimately consume each other's events in a loop (issue → settle → mark paid). What cycled is the <em>coarsening</em>: <code>ChoreographyDeps</code> turns "consumes at runtime" into "builds after", and first-WP-on-last-WP cannot tell a feedback loop from a build dependency. Under contracts-as-truth (5.1) no consumer ever needs a <em>built</em> producer — it builds against the schema, with mocks — so keep choreography-derived build order to the one signal every service genuinely starts from: <code>evt-contract-booked</code>. Delete the four CONSUMES edges you just added (keep both PRODUCES — ownership is true and acyclic); the plan returns. The full consumption picture re-enters the graph in 8.4, when integration reconciles edges to what the system actually does — after wave planning has served its purpose. (The real planner lives with the same coarsening plus an escape hatch — a sequential edge that would close a cycle is skipped; re-read this lesson's callout with new eyes.)</p></li>
         <li><p><strong>Determinism test:</strong> run the planner 5 times; byte-identical JSON every time. If not, you missed a <code>sort</code>.</p></li>
       </ol>
       <div class="callout check"><h4>Checkpoint</h4><p>The capstone plan matches your drawing; max parallelism is 2 (the week-8 promise: billing and collections build simultaneously); cycles refuse loudly and persist nothing; output is deterministic.</p></div>
@@ -2265,7 +2361,10 @@ func (s *Store) ComputeWavePlan() (WavePlan, error) {
         <li><p><strong>Define the package and assemble it:</strong></p>
           <div class="code" data-file><span class="fname">server/internal/graph/context.go</span><pre><code>package graph
 
-import "os"
+import (
+	"context"
+	"os"
+)
 
 type ContextPackage struct {
 	Responsibility Node   `json:"responsibility"`
@@ -2277,9 +2376,9 @@ type ContextPackage struct {
 	WorkPackages   []Node `json:"work_packages"`
 }
 
-func (s *Store) AssembleContext(respID string) (ContextPackage, error) {
+func (s *Store) AssembleContext(ctx context.Context, respID string) (ContextPackage, error) {
 	var pkg ContextPackage
-	resp, err := s.GetNode(respID)
+	resp, err := s.GetNode(ctx, respID)
 	if err != nil {
 		return pkg, err
 	}
@@ -2287,9 +2386,9 @@ func (s *Store) AssembleContext(respID string) (ContextPackage, error) {
 
 	// Specification: follow DOCUMENTED_BY to a Document, read its
 	// path from disk — the one intentional full-text copy.
-	docs, _ := s.Neighbors(respID, "out", EdgeDocumentedBy)
+	docs, _ := s.Neighbors(ctx, respID, "out", EdgeDocumentedBy)
 	for _, e := range docs {
-		d, err := s.GetNode(e.Dst)
+		d, err := s.GetNode(ctx, e.Dst)
 		if err != nil {
 			continue
 		}
@@ -2303,13 +2402,13 @@ func (s *Store) AssembleContext(respID string) (ContextPackage, error) {
 
 	collect := func(dir, edgeType string) []Node {
 		var out []Node
-		edges, _ := s.Neighbors(respID, dir, edgeType)
+		edges, _ := s.Neighbors(ctx, respID, dir, edgeType)
 		for _, e := range edges {
 			other := e.Dst
 			if dir == "in" {
 				other = e.Src
 			}
-			if n, err := s.GetNode(other); err == nil {
+			if n, err := s.GetNode(ctx, other); err == nil {
 				out = append(out, n)
 			}
 		}
@@ -2363,7 +2462,10 @@ func (s *Store) AssembleContext(respID string) (ContextPackage, error) {
         <li><p><strong>Define gates and conditions in code:</strong></p>
           <div class="code" data-file><span class="fname">server/internal/graph/gates.go</span><pre><code>package graph
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 type GateCondition struct {
 	Check            string `json:"check"`
@@ -2400,49 +2502,49 @@ var GateDefinitions = map[string][]GateCondition{
 }
 
 // Simple checks: computed from the graph, no evidence involved.
-var simpleChecks = map[string]func(s *Store, respID string) (bool, string){
-	"has_specification": func(s *Store, id string) (bool, string) {
-		edges, _ := s.Neighbors(id, "out", EdgeDocumentedBy)
+var simpleChecks = map[string]func(ctx context.Context, s *Store, respID string) (bool, string){
+	"has_specification": func(ctx context.Context, s *Store, id string) (bool, string) {
+		edges, _ := s.Neighbors(ctx, id, "out", EdgeDocumentedBy)
 		if len(edges) == 0 {
 			return false, "no DOCUMENTED_BY edge to a specification"
 		}
 		return true, ""
 	},
-	"work_packages_registered": func(s *Store, id string) (bool, string) {
-		edges, _ := s.Neighbors(id, "in", EdgeBelongsTo)
+	"work_packages_registered": func(ctx context.Context, s *Store, id string) (bool, string) {
+		edges, _ := s.Neighbors(ctx, id, "in", EdgeBelongsTo)
 		if len(edges) == 0 {
 			return false, "no work packages BELONGS_TO this responsibility"
 		}
 		return true, ""
 	},
-	"all_wps_complete": func(s *Store, id string) (bool, string) {
-		edges, _ := s.Neighbors(id, "in", EdgeBelongsTo)
+	"all_wps_complete": func(ctx context.Context, s *Store, id string) (bool, string) {
+		edges, _ := s.Neighbors(ctx, id, "in", EdgeBelongsTo)
 		for _, e := range edges {
-			wp, err := s.GetNode(e.Src)
+			wp, err := s.GetNode(ctx, e.Src)
 			if err != nil || wp.Status != "COMPLETE" {
 				return false, e.Src + " is not COMPLETE"
 			}
 		}
 		return true, ""
 	},
-	"all_findings_terminal": func(s *Store, id string) (bool, string) {
+	"all_findings_terminal": func(ctx context.Context, s *Store, id string) (bool, string) {
 		terminal := map[string]bool{"RESOLVED": true, "CONFIRMED": true,
 			"REJECTED": true, "DEFERRED": true}
-		edges, _ := s.Neighbors(id, "in", EdgeAffects)
+		edges, _ := s.Neighbors(ctx, id, "in", EdgeAffects)
 		for _, e := range edges {
-			f, err := s.GetNode(e.Src)
+			f, err := s.GetNode(ctx, e.Src)
 			if err == nil &amp;&amp; f.Type == "Finding" &amp;&amp; !terminal[f.Status] {
 				return false, e.Src + " is " + f.Status
 			}
 		}
 		return true, ""
 	},
-	"no_internal_deferrals": func(s *Store, id string) (bool, string) {
-		edges, _ := s.Neighbors(id, "in", EdgeAffects)
+	"no_internal_deferrals": func(ctx context.Context, s *Store, id string) (bool, string) {
+		edges, _ := s.Neighbors(ctx, id, "in", EdgeAffects)
 		for _, e := range edges {
-			f, err := s.GetNode(e.Src)
+			f, err := s.GetNode(ctx, e.Src)
 			if err == nil &amp;&amp; f.Type == "Finding" &amp;&amp; f.Status == "DEFERRED" {
-				if ok, _ := s.CheckDeferral(f.ID); !ok {
+				if ok, _ := s.CheckDeferral(ctx, f.ID); !ok {
 					return false, f.ID + " is DEFERRED with no ExternalDependency BLOCKS edge"
 				}
 			}
@@ -2452,7 +2554,7 @@ var simpleChecks = map[string]func(s *Store, respID string) (bool, string){
 	// dod_complete and no_inadequate_verdicts land in 6.2 / 6.3.
 }
 
-func (s *Store) CheckGate(respID, gate string) (GateResult, error) {
+func (s *Store) CheckGate(ctx context.Context, respID, gate string) (GateResult, error) {
 	conds, ok := GateDefinitions[gate]
 	if !ok {
 		return GateResult{}, fmt.Errorf("unknown_gate: %q", gate)
@@ -2462,9 +2564,9 @@ func (s *Store) CheckGate(respID, gate string) (GateResult, error) {
 		var pass bool
 		var reason string
 		if c.EvidenceRequired {
-			pass, reason = s.latestEvidencePasses(respID, gate, c.Check)
+			pass, reason = s.latestEvidencePasses(ctx, respID, gate, c.Check)
 		} else if fn, ok := simpleChecks[c.Check]; ok {
-			pass, reason = fn(s, respID)
+			pass, reason = fn(ctx, s, respID)
 		} else {
 			pass, reason = false, "no checker registered for "+c.Check
 		}
@@ -2501,12 +2603,14 @@ func (s *Store) CheckGate(respID, gate string) (GateResult, error) {
           <div class="code" data-file><span class="fname">server/internal/graph/evidence.go</span><pre><code>package graph
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
-func (s *Store) SubmitGateEvidence(respID, gate, check, content string, pass bool) (string, error) {
+func (s *Store) SubmitGateEvidence(ctx context.Context, respID, gate, check, content string, pass bool) (string, error) {
 	conds, ok := GateDefinitions[gate]
 	if !ok {
 		return "", fmt.Errorf("unknown_gate: %q", gate)
@@ -2527,7 +2631,7 @@ func (s *Store) SubmitGateEvidence(respID, gate, check, content string, pass boo
 			"actual output, not an essay and not 'done'")
 	}
 	id := "evidence-" + uuid.NewString()
-	err := s.CreateNode(Node{ID: id, Type: "GateEvidence",
+	err := s.CreateNode(ctx, Node{ID: id, Type: "GateEvidence",
 		Props: map[string]any{
 			"responsibility_id": respID, "gate": gate, "check": check,
 			"content": content, "pass": pass,
@@ -2535,35 +2639,30 @@ func (s *Store) SubmitGateEvidence(respID, gate, check, content string, pass boo
 	return id, err
 }
 
-// latestEvidencePasses: the most recent evidence row for the tuple
+// latestEvidencePasses: the most recent evidence node for the tuple
 // decides. No evidence = fail (never "no news is good news").
-func (s *Store) latestEvidencePasses(respID, gate, check string) (bool, string) {
-	rows, err := s.db.Query(`
-		SELECT props FROM nodes
-		WHERE project_id = ? AND type = 'GateEvidence'
-		  AND json_extract(props,'$.responsibility_id') = ?
-		  AND json_extract(props,'$.gate') = ?
-		  AND json_extract(props,'$.check') = ?
-		ORDER BY created_at DESC, id DESC LIMIT 1`,
-		s.projectID, respID, gate, check)
+func (s *Store) latestEvidencePasses(ctx context.Context, respID, gate, check string) (bool, string) {
+	res, err := s.run(ctx, `
+		MATCH (e:GateEvidence {project_id: $pid})
+		WHERE e.responsibility_id = $rid AND e.gate = $gate AND e.check = $check
+		RETURN e.pass AS pass
+		ORDER BY e.created_at DESC, e.id DESC LIMIT 1`, map[string]any{
+		"rid": respID, "gate": gate, "check": check,
+	})
 	if err != nil {
 		return false, "evidence lookup failed: " + err.Error()
 	}
-	defer rows.Close()
-	if !rows.Next() {
+	if len(res.Records) == 0 {
 		return false, "no evidence submitted for " + check
 	}
-	var props string
-	rows.Scan(&amp;props)
-	n := Node{}
-	_ = jsonUnmarshal(props, &amp;n.Props) // tiny helper over encoding/json
-	if pass, _ := n.Props["pass"].(bool); pass {
+	pass, _, _ := neo4j.GetRecordValue[bool](res.Records[0], "pass")
+	if pass {
 		return true, ""
 	}
 	return false, "latest evidence for " + check + " is failing"
 }</code></pre></div>
-          <p>(<code>go get github.com/google/uuid</code>; GateEvidence ids are the one place a UUID is fine — evidence is append-only plumbing, not a cited artifact.)</p></li>
-        <li><p><strong>Implement the DoD.</strong> Six canonical items for the mini (the real list has 11/12): <code>application_code, unit_tests, contract_tests, integration_tests, observability, runbook</code>. Store as a JSON object on the Responsibility; <code>UpdateDoD(respID, item, verified)</code> rejects unknown keys <em>and returns the full valid list in the error</em> — the tool teaches its own vocabulary. Then register the <code>dod_complete</code> simple check: every canonical key true.</p></li>
+          <p>(GateEvidence ids follow week 2's changelog rule — append-only plumbing gets a UUID, cited artifacts get content-addressed ids; <code>uuid</code> is already in your <code>go.mod</code>.)</p></li>
+        <li><p><strong>Implement the DoD.</strong> Six canonical items for the mini (the real list has 11/12): <code>application_code, unit_tests, contract_tests, integration_tests, observability, runbook</code>. Store as a JSON-stringified object on the Responsibility (nested maps ride <code>serializeProps</code>); <code>UpdateDoD(ctx, respID, item, verified)</code> rejects unknown keys <em>and returns the full valid list in the error</em> — the tool teaches its own vocabulary. Then register the <code>dod_complete</code> simple check: every canonical key true.</p></li>
         <li><p><strong>Expose <code>submit_gate_evidence</code> and <code>update_dod</code> as tools</strong>, then walk <code>booking-core</code> honestly toward <code>build_exit</code>: mark its WPs COMPLETE (through the status map!), flip DoD items as you actually satisfy them (you do have unit tests; you don't have a runbook — write a 10-line one at <code>docs/runbooks/booking-core.md</code> first), and submit real <code>go test ./...</code> output as <code>tests_pass</code> evidence.</p></li>
         <li><p><strong>Try to cheat, and lose:</strong> submit evidence for a check the gate doesn't declare (<code>check_not_evidence_bearing</code>); submit 5-byte content ("ok") (<code>evidence_content</code>); flip a fake DoD key (<code>unknown key</code> + the valid list). Every cheat has a named refusal.</p></li>
       </ol>
@@ -2587,8 +2686,9 @@ func (s *Store) latestEvidencePasses(respID, gate, check string) (bool, string) 
         <li><p><strong>Run a real review ensemble on your own code — with Claude as the reviewers.</strong> Three prompts to Claude Code, one per lens, each ending with "record your verdict via record_verdict and register findings for anything NEEDS_WORK-level":</p>
           <div class="code"><pre><code># skeptic
 "Review server/internal/graph/{gates,evidence}.go as the SKEPTIC: failure
-modes, unchecked errors, what happens when SQLite is locked, when JSON is
-malformed. record_verdict(reviewer=skeptic) + register_finding per issue."
+modes, unchecked errors, what happens when Memgraph is down mid-call, when
+a query returns zero records, when JSON props are malformed.
+record_verdict(reviewer=skeptic) + register_finding per issue."
 
 # consistency
 "Review the same files as CONSISTENCY: do they follow the store's existing
@@ -2689,7 +2789,7 @@ exit 0</code></pre></div></li>
 cd "$(git rev-parse --show-toplevel 2&gt;/dev/null || pwd)"
 if [[ ! -f .minidde/project.yaml ]]; then
   echo "BLOCKED: .minidde/project.yaml missing — every graph call needs a
-project identity. Create it with: project_id + db_path." &gt;&amp;2
+project identity. Create it with: project_id + bolt_uri." &gt;&amp;2
   exit 2
 fi
 exit 0</code></pre></div></li>
@@ -2754,7 +2854,8 @@ exit $((fails &gt; 0))</code></pre></div>
 	"validated":  {"promoted", "parked"},
 	"parked":     {"exploring"},
 	// promoted, rejected: terminal
-},</code></pre></div></li>
+},</code></pre></div>
+          <p>One two-line patch completes it: <code>AllocateDecisionID</code> stamps <code>d.status = $initial</code>, where <code>initial</code> is <code>"exploring"</code> when the type is <code>cir</code> and <code>"Proposed"</code> otherwise — a CIR is <em>born exploring</em>; Proposed isn't a CIR state, and without the patch the funnel's very first <code>update_status</code> dies on <code>invalid_transition</code>. (<code>RegisterDecision</code>'s hardcoded Proposed never lands on this path: its MERGE matches the allocator-created node, and ON MATCH doesn't touch status.)</p></li>
         <li><p><strong>Write <code>mini-ideate</code></strong> — your first skill:</p>
           <div class="code" data-file><span class="fname">.claude/skills/mini-ideate/SKILL.md</span><pre><code>---
 name: mini-ideate
@@ -2782,16 +2883,17 @@ this, STOP and report it — duplicate capture is a process failure.
 2. Write `docs/cir/&lt;id-lowercase&gt;.md` from the template: Context /
    Idea / Riskiest assumption / Smallest test.
 3. `register_decision(id, "cir", path, title, eli10)`.
-4. `update_status(id, "exploring", "captured via mini-ideate")`.
+4. `query_node(id)` — it must already read "exploring" (the allocator
+   births CIRs there; "Proposed" means your task-1 patch is missing).
 
 ## Phase 4 — Report
 Show the operator: the id, the file path, the riskiest assumption, and
 the recommended next step (/mini-challenge). Done means: file on disk,
 node in graph, status exploring — verify all three by reading them back.</code></pre></div></li>
         <li><p><strong>Write <code>mini-promote</code></strong> in the same shape (<code>.claude/skills/mini-promote/SKILL.md</code>): Phase 1 verify the CIR is <code>validated</code> (STOP otherwise); Phase 2 classify the record type by the week-3 disambiguators (ADR? PDR? DDR? WoW?) and ask the operator to confirm; Phase 3 allocate the new id, write the record from the type's template, register it, <code>create_edge(cir → new, PROMOTES_TO)</code>; Phase 4 flip the CIR to <code>promoted</code> and write the promoted-to pointer back into the CIR file. <b>Verify-or-mark:</b> after every graph write, read it back; if a write can't be verified, say so loudly and stop — never report success on faith.</p></li>
-        <li><p><strong>Run the funnel for real.</strong> In Claude Code: <code>/mini-ideate</code> with a genuine idea you had during the course (there's a backlog in your head by now — "the CLI should validate JSON props before sending", "search should rank title hits higher"). Then challenge it yourself as DA (does it survive the riskiest assumption?), <code>update_status → validated</code> with your reasoning, and <code>/mini-promote</code> it into a real record.</p></li>
+        <li><p><strong>Run the funnel for real.</strong> In Claude Code: <code>/mini-ideate</code> with a genuine idea you had during the course (there's a backlog in your head by now — "the CLI should validate JSON props before sending", "search should rank title hits higher"). Then challenge it yourself as DA — walk it <code>exploring → challenged</code> while you interrogate the riskiest assumption, then <code>→ validated</code> with your reasoning — and <code>/mini-promote</code> it into a real record.</p></li>
       </ol>
-      <div class="callout check"><h4>Checkpoint</h4><p>The full funnel ran: CIR file + node (exploring → validated → promoted), a PROMOTES_TO edge, a new Accepted-able record — and the transcript shows the agent following phases in order, including reading its writes back.</p></div>
+      <div class="callout check"><h4>Checkpoint</h4><p>The full funnel ran: CIR file + node (exploring → challenged → validated → promoted), a PROMOTES_TO edge, a new Accepted-able record — and the transcript shows the agent following phases in order, including reading its writes back.</p></div>
       <div class="callout war"><h4>Why it exists</h4><p>The real <code>bld-promote</code> gained its verify-or-mark contract after hosted graph writes silently failed mid-skill: the skill reported success, the graph disagreed, and the drift surfaced days later. Now every mandated write is read back, and an unverified write leaves a marker file and holds the CIR flip. Distributed-systems humility, applied to process tooling.</p></div>
     </div>
   </details>
@@ -2810,47 +2912,59 @@ node in graph, status exploring — verify all three by reading them back.</code
           <div class="code" data-file><span class="fname">server/internal/graph/sessions.go</span><pre><code>package graph
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
-func (s *Store) AssignAgent(agentType, respID string) (string, error) {
-	if _, err := s.GetNode(respID); err != nil {
+func (s *Store) AssignAgent(ctx context.Context, agentType, respID string) (string, error) {
+	if _, err := s.GetNode(ctx, respID); err != nil {
 		return "", err
 	}
 	id := "session-" + uuid.NewString()
-	if err := s.CreateNode(Node{ID: id, Type: "AgentSession", Status: "active",
+	if err := s.CreateNode(ctx, Node{ID: id, Type: "AgentSession", Status: "active",
 		Props: map[string]any{"agent_type": agentType}}); err != nil {
 		return "", err
 	}
-	return id, s.CreateEdge(id, respID, EdgeWorksOn)
+	return id, s.CreateEdge(ctx, id, respID, EdgeWorksOn)
 }
 
-// ClaimWork: atomic compare-and-set. The UPDATE only wins if the WP
-// is still NOT_STARTED — rows-affected 0 means someone beat us to it.
-func (s *Store) ClaimWork(sessionID, wpID string) (bool, error) {
-	res, err := s.db.Exec(`
-		UPDATE nodes SET status = 'BUILDING',
-		  updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
-		WHERE id = ? AND project_id = ? AND type = 'WorkPackage'
-		  AND status IN ('NOT_STARTED','SPECIFIED')`,
-		wpID, s.projectID)
+// ClaimWork: atomic compare-and-set in ONE Cypher statement — the
+// conditional SET fires only while the WP is still claimable, and the
+// RETURN row tells us whether we won. Under concurrent writers,
+// Memgraph's MVCC may instead abort one side with a transient
+// conflict — that is ALSO "lost the race", never a failure.
+func (s *Store) ClaimWork(ctx context.Context, sessionID, wpID string) (bool, error) {
+	res, err := s.run(ctx, `
+		MATCH (wp:WorkPackage {id: $id, project_id: $pid})
+		WHERE wp.status IN ['NOT_STARTED', 'SPECIFIED']
+		WITH wp, wp.status AS prior
+		SET wp.status = 'BUILDING', wp.updated_at = $now
+		RETURN prior`, map[string]any{"id": wpID, "now": nowRFC3339()})
 	if err != nil {
+		if neo4j.IsRetryable(err) {
+			return false, nil // write-write conflict: someone beat us to it
+		}
 		return false, fmt.Errorf("claim: %w", err)
 	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
+	if len(res.Records) == 0 {
 		return false, nil // already claimed — not an error, a race lost
 	}
 	// Record the claim: changelog + WORKS_ON, best-effort but loud.
-	s.db.Exec(`INSERT INTO changelog (project_id,node_id,from_status,to_status,reason,at)
-		VALUES (?,?,?,?,?,strftime('%Y-%m-%dT%H:%M:%SZ','now'))`,
-		s.projectID, wpID, "NOT_STARTED", "BUILDING", "claimed by "+sessionID)
-	return true, s.CreateEdge(sessionID, wpID, EdgeWorksOn)
+	// from_status is the CAS-captured prior — the CAS admits both
+	// NOT_STARTED and SPECIFIED, and an audit row must never guess.
+	prior, _, _ := neo4j.GetRecordValue[string](res.Records[0], "prior")
+	s.run(ctx, `CREATE (c:ChangelogEntry {id: $cid, project_id: $pid,
+		node_id: $id, from_status: $from, to_status: 'BUILDING',
+		reason: $reason, created_at: $now, updated_at: $now})`,
+		map[string]any{"cid": "changelog-" + uuid.NewString(), "id": wpID,
+			"from": prior, "reason": "claimed by " + sessionID, "now": nowRFC3339()})
+	return true, s.CreateEdge(ctx, sessionID, wpID, EdgeWorksOn)
 }
 
-func (s *Store) CompleteAgent(sessionID, status, summary string) error {
+func (s *Store) CompleteAgent(ctx context.Context, sessionID, status, summary string) error {
 	if status == "completed" &amp;&amp; len(summary) &lt; 40 {
 		return fmt.Errorf("summary_required: 'completed' needs a real result "+
 			"summary (&gt;=40 chars) — what shipped, what's left, how you verified")
@@ -2858,14 +2972,14 @@ func (s *Store) CompleteAgent(sessionID, status, summary string) error {
 	if status != "completed" &amp;&amp; status != "failed" {
 		return fmt.Errorf("bad_terminal: completed | failed")
 	}
-	if err := s.UpdateNode(sessionID, map[string]any{"result_summary": summary}); err != nil {
+	if err := s.UpdateNode(ctx, sessionID, map[string]any{"result_summary": summary}); err != nil {
 		return err
 	}
-	return s.UpdateStatus(sessionID, status, "agent session closed")
+	return s.UpdateStatus(ctx, sessionID, status, "agent session closed")
 }</code></pre></div>
           <p>Add an AgentSession transition map (<code>"" → active; active → {completed, failed}</code>). Note the deliberate exception to your own week-2 law: <code>ClaimWork</code> writes status directly inside its atomic statement — <em>because the CAS and the transition are the same write</em>. Document that exception in the code and in a one-line WoW record; undocumented exceptions are how disciplines die.</p></li>
         <li><p><strong>Expose all three as tools</strong> plus <code>query_available_work()</code>: WPs whose status is NOT_STARTED/SPECIFIED and whose wave is the lowest incomplete wave — the planner's output becoming the dispatcher's input.</p></li>
-        <li><p><strong>Race it.</strong> A test that fires 10 goroutines at <code>ClaimWork</code> for the same WP: exactly one true, nine false, status BUILDING once. This test is the whole reason CAS exists — and SQLite's single-writer model makes it pass; know that this is where the real system leans on Neo4j transactions instead.</p></li>
+        <li><p><strong>Race it.</strong> A test that fires 10 goroutines at <code>ClaimWork</code> for the same WP: exactly one true, nine false, status BUILDING once. Some losers return via the empty-result path, some via an MVCC conflict abort — the code folds both into "lost", which is the point of the test. This is where mini and real genuinely share semantics: a single-statement compare-and-set over Bolt.</p></li>
       </ol>
       <div class="callout check"><h4>Checkpoint</h4><p>Race test green (run with <code>-race</code>); <code>complete_agent("completed", "done")</code> is refused for the thin summary; the session graph shows who touched what, when, and what they claimed happened.</p></div>
     </div>
@@ -2921,7 +3035,7 @@ func New(st *graph.Store) http.Handler {
 	})
 
 	mux.HandleFunc("GET /api/pipeline", func(w http.ResponseWriter, r *http.Request) {
-		resps, err := st.QueryAll("Responsibility", "")
+		resps, err := st.QueryAll(r.Context(), "Responsibility", "")
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -2930,7 +3044,7 @@ func New(st *graph.Store) http.Handler {
 	})
 
 	mux.HandleFunc("GET /api/findings", func(w http.ResponseWriter, r *http.Request) {
-		findings, err := st.QueryAll("Finding", r.URL.Query().Get("status"))
+		findings, err := st.QueryAll(r.Context(), "Finding", r.URL.Query().Get("status"))
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -2939,7 +3053,7 @@ func New(st *graph.Store) http.Handler {
 	})
 
 	mux.HandleFunc("GET /api/responsibilities/{id}", func(w http.ResponseWriter, r *http.Request) {
-		pkg, err := st.AssembleContext(r.PathValue("id"))
+		pkg, err := st.AssembleContext(r.Context(), r.PathValue("id"))
 		if err != nil {
 			status := 500
 			if strings.Contains(err.Error(), "not found") {
@@ -2955,7 +3069,7 @@ func New(st *graph.Store) http.Handler {
 	mux.HandleFunc("POST /api/findings/{id}/resolve", func(w http.ResponseWriter, r *http.Request) {
 		var body struct{ Resolution, VerificationNote string }
 		json.NewDecoder(r.Body).Decode(&amp;body)
-		if err := st.ResolveFinding(r.PathValue("id"), body.Resolution,
+		if err := st.ResolveFinding(r.Context(), r.PathValue("id"), body.Resolution,
 			"decision-authority", body.VerificationNote); err != nil {
 			http.Error(w, err.Error(), 422)
 			return
@@ -3122,11 +3236,12 @@ function Card({ node }: { node: Node }) {
             <tr><td>4</td><td><code>c2c.receivable.settled</code></td><td>collections → billing, booking</td><td class="wrapcode"><code>receivable_id, invoice_id, sap_contract_number, settled_at</code></td><td>— (booking counts)</td></tr>
             <tr><td>5</td><td><code>c2c.contract.closed</code></td><td>booking → all</td><td class="wrapcode"><code>sap_contract_number, closed_at</code></td><td>financially closing → closed</td></tr>
           </table></div>
-          <p>Event #2 exists to teach symmetry: a service consuming its own event through the bus behaves exactly like any other consumer — same dedup, same ordering.</p></li>
+          <p>Event #2 exists to teach symmetry: a service consuming its own event through the bus behaves exactly like any other consumer — same dedup, same ordering. (It also adds no build dependency: <code>ChoreographyDeps</code>' <code>producer.id &lt;&gt; consumer.id</code> guard skips self-consumption.)</p>
+          <p>Then give each contract a lifecycle-bearing home: mint one <code>Contract</code> node per event (<code>ctr-contract-booked</code> … five in all, props <code>{"event": "evt-contract-booked"}</code>), born <code>SPECIFIED</code> through the 5.1 map, and link each <code>-[:DEFINES]-&gt;</code> its Event — one last edge type to mint (<code>EdgeDefines = "DEFINES"</code>, added to week 1's constants and allowlist; it is the real system's Contract → Event edge, and it makes <code>query_contract</code>'s Contract-then-Event fallback non-vacuous at last). The Event keeps carrying the schema; the Contract node tracks how far the <em>implementation</em> of that schema has progressed — SPECIFIED now, BUILT in 8.3, VERIFIED in 8.4.</p></li>
         <li><p><strong>Complete the specs</strong> (<code>docs/sdd/*-sdd.md</code> from week 5) to build-from-alone grade. Each spec must state: owned tables, HTTP surface, events in/out with the spine effect, and the invariants — booking is the <b>single writer of the spine state machine</b>; billing's invoice statuses (<code>draft|issued|paid</code>) and collections' receivable statuses (<code>open|reminded|settled</code>) are <em>substates on their own objects, never a second spine</em>. Run <code>compute_context_packages</code> until all green.</p></li>
         <li><p><strong>Plan and freeze.</strong> <code>compute_wave_plan</code> — expected: wave 1 <code>wp-book-api</code>; wave 2 <code>wp-book-events</code>; wave 3 <code>wp-bill-consume</code> ∥ <code>wp-col-consume</code>; wave 4 <code>wp-bill-issue</code> ∥ <code>wp-col-settle</code>. Then walk all three Responsibilities to <code>DESIGN_COMPLETE</code> — which means passing <code>design_exit</code> first; your own hook from week 6 will make sure you don't skip it.</p></li>
       </ol>
-      <div class="callout check"><h4>Checkpoint</h4><p>DDR Accepted and governing all three services; 5 schemas reject malformed payloads via <code>validate_schema</code>; context packages all green; wave plan matches the drawing; all three Responsibilities at DESIGN_COMPLETE <em>through the gate</em>.</p></div>
+      <div class="callout check"><h4>Checkpoint</h4><p>DDR Accepted and governing all three services; 5 schemas reject malformed payloads via <code>validate_schema</code>; five Contract nodes at SPECIFIED, each DEFINES-linked to its Event; context packages all green; wave plan matches the drawing; all three Responsibilities at DESIGN_COMPLETE <em>through the gate</em>.</p></div>
     </div>
   </details>
 
@@ -3197,7 +3312,7 @@ CREATE TABLE IF NOT EXISTS consumed_event (
 // Drainer: every second, POST each pending row to every subscriber;
 // mark published only when ALL subscribers returned 2xx. Redelivery
 // on failure is the at-least-once semantics consumers must survive.</code></pre></div>
-          <p>Implement the drainer loop yourself (~40 lines: <code>SELECT … WHERE status='pending' ORDER BY created_at</code>, POST the envelope to each subscriber URL, <code>UPDATE … SET status='published'</code> on all-2xx). Keep SQLite per service for the teaching build (one file each: <code>booking.db</code>, <code>billing.db</code>, <code>collections.db</code>) — the pattern, not Postgres, is the lesson; note where the real system differs (AlloyDB, a separate drainer <em>service</em>, real Pub/Sub with <code>EnableMessageOrdering</code>).</p></li>
+          <p>Implement the drainer loop yourself (~40 lines: <code>SELECT … WHERE status='pending' ORDER BY created_at</code>, POST the envelope to each subscriber URL, <code>UPDATE … SET status='published'</code> on all-2xx). Keep SQLite per service for the teaching build (one file each: <code>booking.db</code>, <code>billing.db</code>, <code>collections.db</code>) — and notice the two planes: <b>Memgraph holds the DDE metadata about the work</b> (responsibilities, contracts, gates), while <b>each service privately owns its runtime data</b> relationally, exactly as real services own their AlloyDB schemas and never touch the builder's graph. The pattern, not Postgres, is the lesson; note where the real system differs (AlloyDB, a separate drainer <em>service</em>, real Pub/Sub with <code>EnableMessageOrdering</code>).</p></li>
         <li><p><strong>Generate typed payload structs from the contracts.</strong> One <code>capstone/pkg/contracts/types.go</code> with a struct per event payload, field names matching the JSON Schemas exactly. Write a contract test: marshal an example of each struct, run it through <code>validate_schema</code> (call your mini-DDE HTTP API from the test, or export <code>ValidateAgainst</code>) — <b>the structs are now mechanically chained to the graph's contracts</b>.</p></li>
         <li><p><strong>Foundation exit.</strong> Mark the Contract nodes <code>SPECIFIED → BUILT</code>… no — read the map: BUILT means code exists; that's true only for the shared types. This is a judgment call the real system resolves cleanly: contract status tracks the <em>implementation</em>, so leave them SPECIFIED until 8.3. Instead: commit, tag <code>foundation-v1</code>, and declare <code>capstone/pkg/</code> frozen. Register a Pattern node while you're here: "state change + outbox row in one tx" — you'll cite it in reviews.</p></li>
       </ol>
@@ -3216,9 +3331,10 @@ CREATE TABLE IF NOT EXISTS consumed_event (
       <h4>Tasks</h4>
       <ol class="steps">
         <li><p><strong>Wave 1–2: mini-booking.</strong> Module <code>capstone/services/mini-booking</code> (add to <code>go.work</code>), anatomy: <code>cmd/mini-booking/main.go</code>, <code>internal/{config,domain,store,transport}</code>. Tables: <code>booking_request(id, client_name, total_value, status draft|submitted|booked)</code>, <code>contract(sap_contract_number PK, lifecycle_state, booked_at)</code> + the shared outbox DDL. HTTP: <code>POST /api/bookings</code>, <code>POST /api/bookings/{id}/book</code>, <code>GET /api/contracts/{sap}</code>, <code>POST /events</code>, <code>GET /healthz</code>, <code>GET /readyz</code>. The heart — book = mint + emit in ONE transaction:</p>
-          <div class="code" data-file><span class="fname">mini-booking/internal/store/book.go (the load-bearing write)</span><pre><code>// Book flips the request draft→booked, mints the Contract at 'setup',
-// advances it to 'active', and inserts the c2c.contract.booked outbox
-// row — ONE transaction. There is never a booked-but-unannounced window.
+          <div class="code" data-file><span class="fname">mini-booking/internal/store/book.go (the load-bearing write)</span><pre><code>// Book flips the request draft→booked, mints the Contract directly at
+// 'active' (setup → active collapses into the mint — the booked event
+// IS that transition), and inserts the c2c.contract.booked outbox row
+// — ONE transaction. There is never a booked-but-unannounced window.
 func (s *Store) Book(ctx context.Context, reqID string) (string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -3227,7 +3343,7 @@ func (s *Store) Book(ctx context.Context, reqID string) (string, error) {
 	defer tx.Rollback()
 
 	// Guarded single-winner update: rows-affected 0 = already booked.
-	res, err := tx.Exec(`UPDATE booking_request SET status='booked'
+	res, err := tx.ExecContext(ctx, `UPDATE booking_request SET status='booked'
 		WHERE id=? AND status='submitted'`, reqID)
 	if err != nil {
 		return "", fmt.Errorf("%w: guard: %v", ErrStore, err)
@@ -3237,7 +3353,7 @@ func (s *Store) Book(ctx context.Context, reqID string) (string, error) {
 	}
 
 	sap := mintSAPNumber() // "SAP-2026-000042"-shaped, sequence from a table
-	if _, err := tx.Exec(`INSERT INTO contract
+	if _, err := tx.ExecContext(ctx, `INSERT INTO contract
 		(sap_contract_number, lifecycle_state, booked_at)
 		VALUES (?, 'active', ?)`, sap, now()); err != nil {
 		return "", fmt.Errorf("%w: contract: %v", ErrStore, err)
@@ -3247,7 +3363,7 @@ func (s *Store) Book(ctx context.Context, reqID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := outbox.InsertTx(tx, evt); err != nil {
+	if err := outbox.InsertTx(ctx, tx, evt); err != nil {
 		return "", fmt.Errorf("%w: outbox: %v", ErrStore, err)
 	}
 	return sap, tx.Commit()
@@ -3312,7 +3428,7 @@ func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
    center canvas (white) — the ONLY zone your screens replace. */</code></pre></div>
           <p>Left panel = the contract list (active row highlighted <code>--c2c-purple-light</code>). Center-canvas screens: <b>Booking pipeline</b> (requests table, a <code>--c2c-purple</code> "Book" CTA); <b>Contract detail</b> — the hero: a 5-step lifecycle-spine stepper (<code>setup … closed</code>) plus the event timeline, polling; <b>Invoices</b> (issue action); <b>Receivables</b> (remind/settle, action log visible); <b>Event bus monitor</b> — outbox rows across all three services with ordering keys, the choreography made visible. No custom hex beyond the tokens; headings <code>#1d1d1f</code>.</p></li>
         <li><p><strong>Integration verification, wave order.</strong> Bring up all three services + drainers (a <code>Procfile</code>/<code>compose.yaml</code> or three terminals), then run the choreography end to end <em>and write it as a script</em> (<code>capstone/test/e2e.sh</code>): create booking → book it → assert billing has a draft invoice (poll, don't sleep-and-pray) → issue → assert collections opened a receivable → settle → assert invoice <code>paid</code> AND booking spine at <code>financially closing</code> → assert booking emits <code>contract.closed</code> → spine <code>closed</code>. Exception paths too: malformed envelope → 400, no retry; kill mini-collections mid-flow → drainer redelivers on restart, dedup absorbs the replays. Classify anything that breaks the way Stage 6 does: schema mismatch → foundation bug; behavioral assumption → contract needs enrichment (fix the DDR/schema, then the code); single-service defect → back to that service only. Register the findings; resolve them; re-run to green.</p></li>
-        <li><p><strong>Update the graph to match reality.</strong> If integration revealed an event flow the graph doesn't model (it usually does — did booking <em>really</em> consume <code>receivable.settled</code>?), fix the PRODUCES/CONSUMES edges now. The graph must match what the integrated system actually does, not what was designed. Mark Contracts <code>VERIFIED</code>; walk Responsibilities to <code>INTEGRATING</code> (the <code>integration-ish</code> statuses are yours to gate if you added one — otherwise proceed).</p></li>
+        <li><p><strong>Update the graph to match reality.</strong> If integration revealed an event flow the graph doesn't model (it usually does — did booking <em>really</em> consume <code>receivable.settled</code>?), fix the PRODUCES/CONSUMES edges now. Start with the ones 5.3 taught you to withhold from the planning graph: booking's PRODUCES on <code>booking.completed</code>/<code>contract.closed</code> (plus its self-CONSUMES on the former and the closed fan-out), collections' CONSUMES on <code>invoice.issued</code>, billing's on <code>receivable.settled</code>, booking's on both. Waves are history — from here the graph documents runtime truth for the next reader. The graph must match what the integrated system actually does, not what was designed. Mark Contracts <code>VERIFIED</code>; walk Responsibilities to <code>INTEGRATING</code> (the <code>integration-ish</code> statuses are yours to gate if you added one — otherwise proceed).</p></li>
         <li><p><strong>The acceptance walk — your machinery, end to end.</strong> For each Responsibility: strategic review (ask Claude for the 3-sprint regret test over the whole capstone; <code>record_verdict(reviewer=strategic)</code>); re-audit the DoD (runbooks exist? observability = the event bus monitor + health endpoints — flip honestly); submit <code>deployment_verified</code> evidence (the e2e script's output); ensure every finding terminal; then <code>check_gate(_, acceptance_exit)</code> → and finally <code>update_status → COMPLETE</code>, which your week-6 hook only permits because the gate flag exists. If any step blocks — that's the system working; do the work it names.</p></li>
         <li><p><strong>Graduate.</strong> Write the retro as a course-closing document (<code>docs/working/retro.md</code>): for each mini piece, name its full-size counterpart and one thing the real one does that yours doesn't — your store vs Neo4j+Cypher with 63 types; your 3 gates vs 22 with scope/variant awareness and evidence freshness; your hook pair vs a 48-hook estate; your funnel vs ideate→challenge→promote with adversarial review; your wave planner vs one that persists tagged derived edges. Then open the real repo and read, in this order: <code>docs/governance-framework.md</code> §7 again (it will read differently now), <code>bld-autonomous-build/SKILL.md</code> end to end, and <code>gate_scope_aware.go</code>. You'll recognize everything — that's what mastery feels like.</p></li>
       </ol>
@@ -3332,9 +3448,9 @@ func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
   <h3 class="sech">Mini-DDE ↔ real Nexus DDE</h3>
   <div class="tablewrap"><table>
     <tr><th>Piece</th><th>Your mini (week)</th><th>The real thing</th></tr>
-    <tr><td>Graph store</td><td>Go + SQLite, ~14 node types (W1)</td><td>Neo4j via <code>neo4j-go-driver</code>, 63 node + 63 edge types, hand-written Cypher, project-scoped store (<code>builder/server/internal/graph/</code>)</td></tr>
+    <tr><td>Graph store</td><td>Go + Memgraph via <code>neo4j-go-driver/v5</code> — hand-written Cypher, ~15 node types (W1)</td><td>Neo4j via <code>neo4j-go-driver/v6</code>, 63 node + 63 edge types, hand-written Cypher, project-scoped store (<code>builder/server/internal/graph/</code>)</td></tr>
     <tr><td>Status machines</td><td>4 transition maps + <code>UpdateStatus</code> (W2)</td><td>9+ maps in <code>model.go</code>, multi-label atomic writes, changelog + events, derived-status refusals (<code>outcome_status_is_derived</code>)</td></tr>
-    <tr><td>ID allocation</td><td><code>DeriveSlug</code> + Crockford suffix, atomic INSERT (W2)</td><td>Atomic Cypher MERGE allocator + reserve/redeem lifecycle with tombstones and reapers (Builder ADR-atomic-id-allocator-H37G)</td></tr>
+    <tr><td>ID allocation</td><td><code>DeriveSlug</code> + Crockford suffix, atomic MERGE with ON-CREATE marker (W2)</td><td>The same atomic-MERGE trick + reserve/redeem lifecycle with tombstones and reapers (Builder ADR-atomic-id-allocator-H37G)</td></tr>
     <tr><td>Decision records</td><td>5 templates, dual-homing, supersession, lint (W3)</td><td>Format A + corpus manifest across 4 tiers, citation-symmetry lint, compliance-claims lint, untracked-record Stop hook</td></tr>
     <tr><td>Findings</td><td>Field contract + AFFECTS/FOUND_IN + rollback (W3)</td><td>19-value classification taxonomy, scope axis, evidence-gated resolve (C99G), routing, reservation flow</td></tr>
     <tr><td>MCP server</td><td>mcp-go, ~20 tools, one registry (W4)</td><td>110 tools, stdio + streamable HTTP, fast-fail health cache, in-flight semaphore, failure observation</td></tr>
@@ -3380,6 +3496,7 @@ func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
     <tr><td><code>DEPENDS_ON</code></td><td>WorkPackage → WorkPackage</td><td>explicit ordering (planner input)</td></tr>
     <tr><td><code>WORKS_ON</code></td><td>AgentSession → Responsibility/WP</td><td>who's on it</td></tr>
     <tr><td><code>VERDICT_FOR</code></td><td>Verdict → Responsibility</td><td>review output</td></tr>
+    <tr><td><code>DEFINES</code></td><td>Contract → Event</td><td>which contract governs which event (minted in 8.1)</td></tr>
     <tr><td><code>PROMOTES_TO</code></td><td>CIR → Decision</td><td>ideation lineage</td></tr>
     <tr><td><code>SUPERSEDES</code></td><td>Decision → Decision</td><td>record replacement (symmetric with file pointers)</td></tr>
     <tr><td><code>BLOCKS</code></td><td>ExternalDependency → Finding</td><td>the deferral authorization</td></tr>

@@ -47,7 +47,7 @@
 &lt;!-- HOW this is enforced: name the lint / hook / gate / review.
      "manual review only" is legal but flagged as weak. --&gt;</code></pre></div>
           <p>Copy it for <code>pdr</code>, <code>ddr</code>, <code>wow</code>, <code>cir</code> (change the meta tag name). The <b>Compliance section is the teeth</b>: every record must say how reality is kept in line with it.</p></li>
-        <li><p><strong>Author your first real record.</strong> Use an ID from lesson 2.2's allocator (<code>allocate --type adr --title "SQLite is the mini-DDE graph store"</code>), then write the record for a decision you already made: ADR "SQLite is the mini-DDE graph store" — context (single-user teaching clone, no server dependency), decision (modernc.org/sqlite, one file, project-scoped rows), consequences (no concurrent writers; fine for one operator), compliance ("manual for now; week 6 adds a lint"). Set status <code>Accepted</code> — you're the decision authority here.</p></li>
+        <li><p><strong>Author your first real record.</strong> Use an ID from lesson 2.2's allocator (<code>allocate --type adr --title "Memgraph is the mini-DDE graph store"</code>), then write the record for a decision you already made: ADR "Memgraph is the mini-DDE graph store" — context (a teaching clone that should mirror the real system's Cypher/Bolt stack with near-zero ops), decision (Memgraph Community in one Docker container, <code>neo4j-go-driver/v5</code>, one label per node type, project scoping by property), consequences (Docker must be running; in-memory engine with snapshots in a named volume — the graph is treated as rebuildable from the idempotent seed), compliance ("manual for now; week 6 adds a lint"). Set status <code>Accepted</code> — you're the decision authority here.</p></li>
         <li><p><strong>Author a PDR for the capstone product</strong> so week 8 has governing authority ready: <code>PDR "Mini contract-to-cash flow"</code> — the product does: book a contract, issue invoices, chase receivables to settlement; lifecycle spine <code>setup → active → in fulfilment → financially closing → closed</code> keyed by a fake SAP Contract Number. Status: <code>Accepted</code>.</p></li>
         <li><p><strong>Feel the disambiguators.</strong> For each of these, decide the record type before revealing the answer by reasoning from the definitions: (a) "events are ordered per contract by a hashed key" — <em>DDR (how data flows)</em>; (b) "no code merges without a passing gate" — <em>WoW (how the team operates)</em>; (c) "the frontend mirrors the C2C three-zone shell" — <em>ADR or PDR? It governs how the system is built for users → PDR if about behavior, ADR if about implementation structure. Write the sentence both ways and notice which record it wants.</em></p></li>
       </ol>
@@ -69,11 +69,12 @@
           <div class="code" data-file><span class="fname">server/internal/graph/decisions.go</span><pre><code>package graph
 
 import (
+	"context"
 	"fmt"
 	"os"
 )
 
-func (s *Store) RegisterDecision(id, docType, path, title, eli10 string) error {
+func (s *Store) RegisterDecision(ctx context.Context, id, docType, path, title, eli10 string) error {
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("decision_file_missing: %s: %w", path, err)
@@ -81,7 +82,7 @@ func (s *Store) RegisterDecision(id, docType, path, title, eli10 string) error {
 	if len(body) &gt; 256&lt;&lt;10 {
 		body = body[:256&lt;&lt;10]
 	}
-	return s.CreateNode(Node{
+	return s.CreateNode(ctx, Node{
 		ID: id, Type: "Decision", Status: "Proposed",
 		Props: map[string]any{
 			"doc_type": docType, "path": path, "title": title,
@@ -92,14 +93,14 @@ func (s *Store) RegisterDecision(id, docType, path, title, eli10 string) error {
 
 // SupersedeDecision retires old in favor of new: both nodes updated,
 // SUPERSEDES edge minted, one transaction of intent.
-func (s *Store) SupersedeDecision(oldID, newID string) error {
-	if _, err := s.GetNode(newID); err != nil {
+func (s *Store) SupersedeDecision(ctx context.Context, oldID, newID string) error {
+	if _, err := s.GetNode(ctx, newID); err != nil {
 		return fmt.Errorf("superseding_record_missing: %w", err)
 	}
-	if err := s.CreateEdge(newID, oldID, EdgeSupersedes); err != nil {
+	if err := s.CreateEdge(ctx, newID, oldID, EdgeSupersedes); err != nil {
 		return err
 	}
-	if err := s.UpdateStatus(oldID, "Superseded",
+	if err := s.UpdateStatus(ctx, oldID, "Superseded",
 		"superseded by "+newID); err != nil {
 		return err
 	}
@@ -108,7 +109,7 @@ func (s *Store) SupersedeDecision(oldID, newID string) error {
           <p>Add a Decision transition map to <code>Transitions</code>: <code>"" → Proposed; Proposed → {Accepted, Deprecated}; Accepted → {Superseded, Deprecated}</code>. Note what that map forbids: editing an Accepted record back to Proposed, and superseding something that was never accepted (a never-accepted record is Deprecated instead).</p></li>
         <li><p><strong>Register both week-3.1 records</strong> via a new CLI command <code>register-decision</code>, then <code>update-status … --to Accepted --reason "DA approval (that's you)"</code>. Check the changelog — your governance now has an audit trail.</p></li>
         <li><p><strong>Wire authority to work.</strong> Your <code>booking-core</code> Responsibility already carries <code>GOVERNED_BY</code> from lesson 2.3 — repoint or add edges so it's governed by the capstone PDR. Query it: <code>neighbors --id booking-core --dir out --type GOVERNED_BY</code>. That query is the whole reason the mirror exists.</p></li>
-        <li><p><strong>Do one full supersession end to end.</strong> Decide something small differently (e.g. "the CLI reads project id from env" → new ADR: "project id comes from .minidde/project.yaml, env is the override"). Allocate the new ID; write the new file with <code>&lt;supersedes&gt;</code>; edit the old file's <code>&lt;superseded-by&gt;</code> + status; register the new node; call <code>SupersedeDecision(old, new)</code>; commit both files together. Read the git diff — that shape (two files, one commit, symmetric pointers) is the discipline.</p></li>
+        <li><p><strong>Do one full supersession end to end.</strong> Decide something small differently (e.g. "the CLI reads project id from env" → new ADR: "project id comes from .minidde/project.yaml" — exactly what week 4 will implement; its <code>MINIDDE_CONFIG</code> variable overrides the config <em>path</em>, not the project id). Allocate the new ID; write the new file with <code>&lt;supersedes&gt;</code>; edit the old file's <code>&lt;superseded-by&gt;</code> + status; register the new node; call <code>SupersedeDecision(old, new)</code>; commit both files together. Read the git diff — that shape (two files, one commit, symmetric pointers) is the discipline.</p></li>
       </ol>
       <div class="callout check"><h4>Checkpoint</h4><p><code>ls --type Decision</code> shows your records with statuses; the superseded pair points at each other in both the files and the graph; the changelog explains every status move.</p></div>
       <div class="callout war"><h4>Why it exists</h4><p>PR 30371, 2026-06-01: merged code cited <code>Builder ADR-local-builder-dev-N7GR</code> — but the ADR file was never <code>git add</code>-ed. Every other clone had code governed by a decision that did not exist. Three existing gates each had a blind spot; the fix was a new Stop hook blocking session end on untracked Accepted records. Dual-homing only works when both homes actually get written.</p></div>
@@ -196,7 +197,10 @@ exit $((fails &gt; 0))</code></pre></div></li>
         <li><p><strong>Implement <code>RegisterFinding</code></strong> with the field contract and bundled edges:</p>
           <div class="code" data-file><span class="fname">server/internal/graph/findings.go</span><pre><code>package graph
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 var severities = map[string]bool{
 	"critical": true, "high": true, "medium": true, "low": true,
@@ -208,7 +212,7 @@ type FindingInput struct {
 	Eli10                                        string
 }
 
-func (s *Store) RegisterFinding(in FindingInput) (string, error) {
+func (s *Store) RegisterFinding(ctx context.Context, in FindingInput) (string, error) {
 	switch {
 	case len(in.Title) &lt; 10:
 		return "", fmt.Errorf("finding_title_thin: &gt;=10 chars — name the problem")
@@ -223,11 +227,11 @@ func (s *Store) RegisterFinding(in FindingInput) (string, error) {
 	case in.Classification == "":
 		return "", fmt.Errorf("finding_classification_required: e.g. ambiguous_spec, defect, missing_contract, pattern_violation")
 	}
-	id, err := s.AllocateID("Finding", "Finding", in.Title, "OPEN")
+	id, err := s.AllocateID(ctx, "Finding", "Finding", in.Title, "OPEN")
 	if err != nil {
 		return "", err
 	}
-	err = s.patchAndLink(id, map[string]any{
+	err = s.patchAndLink(ctx, id, map[string]any{
 		"title": in.Title, "description": in.Description,
 		"evidence": in.Evidence, "recommendation": in.Recommendation,
 		"severity": in.Severity, "classification": in.Classification,
@@ -238,51 +242,57 @@ func (s *Store) RegisterFinding(in FindingInput) (string, error) {
 	})
 	if err != nil {
 		// verify-and-rollback: a finding without its edges must not exist.
-		s.db.Exec(`DELETE FROM nodes WHERE id=? AND project_id=?`, id, s.projectID)
+		s.DeleteNode(ctx, id)
 		return "", fmt.Errorf("finding_edges_failed (rolled back): %w", err)
 	}
 	return id, nil
 }</code></pre></div>
-          <p>Refactor small helpers as needed: generalize lesson 2.2's allocator into <code>AllocateID(nodeType, prefix, title, initialStatus)</code> so Findings mint <code>Finding-&lt;slug&gt;-&lt;XXXX&gt;</code>, and add <code>patchAndLink(id, props, edges)</code> (UpdateNode + CreateEdge loop). Callers never supply finding IDs — <b>server allocates, always</b>.</p></li>
-        <li><p><strong>Implement the lifecycle verbs.</strong> <code>ResolveFinding(id, resolution, resolvedBy, verificationNote)</code>: reject unless current status is OPEN, resolution ≥50 chars, note ≥30 chars, then <code>UpdateStatus(id, "RESOLVED", …)</code> and patch the resolution fields. <code>ConfirmFinding(id, confirmedBy)</code>: RESOLVED→CONFIRMED. <code>RejectFinding(id, rejectedBy, reason)</code>: only from OPEN and only when <code>rejectedBy == "decision-authority"</code> — agents never silently kill findings.</p></li>
+          <p>Refactor small helpers as needed: generalize lesson 2.2's allocator into <code>AllocateID(ctx, nodeType, prefix, title, initialStatus)</code> (same MERGE + ON-CREATE-marker statement, label and prefix parameterized from the allowlist) so Findings mint <code>Finding-&lt;slug&gt;-&lt;XXXX&gt;</code>, and add <code>patchAndLink(ctx, id, props, edges)</code> (UpdateNode + CreateEdge loop). Callers never supply finding IDs — <b>server allocates, always</b>.</p></li>
+        <li><p><strong>Implement the lifecycle verbs.</strong> <code>ResolveFinding(ctx, id, resolution, resolvedBy, verificationNote)</code>: reject unless current status is OPEN, resolution ≥50 chars, note ≥30 chars, then <code>UpdateStatus(ctx, id, "RESOLVED", …)</code> and patch the resolution fields. <code>ConfirmFinding(ctx, id, confirmedBy)</code>: RESOLVED→CONFIRMED. <code>RejectFinding(ctx, id, rejectedBy, reason)</code>: only from OPEN and only when <code>rejectedBy == "decision-authority"</code> — agents never silently kill findings.</p></li>
         <li><p><strong>Implement escalations as tool-owned lifecycle:</strong></p>
           <div class="code" data-file><span class="fname">server/internal/graph/escalations.go</span><pre><code>package graph
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
-func (s *Store) RegisterEscalation(question string, options []string, eli10 string) (string, error) {
+func (s *Store) RegisterEscalation(ctx context.Context, question string, options []string, eli10 string) (string, error) {
 	if question == "" || len(options) &lt; 2 {
 		return "", fmt.Errorf("escalation_needs_options: a DA question " +
 			"carries &gt;=2 explicit options — never an open 'what should I do?'")
 	}
-	id, err := s.AllocateID("Escalation", "Escalation", question, "pending")
+	id, err := s.AllocateID(ctx, "Escalation", "Escalation", question, "pending")
 	if err != nil {
 		return "", err
 	}
-	return id, s.UpdateNode(id, map[string]any{
+	// options is a []string — serializeProps passes only scalars
+	// through, so this lands in the graph as ONE JSON string
+	// (`["a","b"]`); parse it back if you ever need the list.
+	return id, s.UpdateNode(ctx, id, map[string]any{
 		"question": question, "options": options, "eli10": eli10,
 	})
 }
 
 // ResolveEscalation refuses unless status is exactly "pending" —
 // the lifecycle is owned by this function, not a transition map.
-func (s *Store) ResolveEscalation(id, chosen, resolvedBy string) error {
-	n, err := s.GetNode(id)
+func (s *Store) ResolveEscalation(ctx context.Context, id, chosen, resolvedBy string) error {
+	n, err := s.GetNode(ctx, id)
 	if err != nil {
 		return err
 	}
 	if n.Status != "pending" {
 		return fmt.Errorf("escalation_not_pending: %s is %q", id, n.Status)
 	}
-	if err := s.UpdateNode(id, map[string]any{
+	if err := s.UpdateNode(ctx, id, map[string]any{
 		"resolution": chosen, "resolved_by": resolvedBy,
 	}); err != nil {
 		return err
 	}
-	return s.UpdateStatus(id, "resolved", "DA chose: "+chosen)
+	return s.UpdateStatus(ctx, id, "resolved", "DA chose: "+chosen)
 }</code></pre></div></li>
         <li><p><strong>Use it for real.</strong> Register a genuine finding from your own build so far (you have one — everyone does; e.g. "CLI create-node accepts empty --id"). Resolve it with a real fix and a verification note that names <em>how you verified</em>. Then register an escalation with two options for a real open question (e.g. "should the capstone use one DB or three?"), and resolve it as the DA.</p></li>
-        <li><p><strong>Read the deferral doctrine</strong> (below) and add the one mechanical piece: a <code>CheckDeferral(findingID)</code> that returns true only if an <code>ExternalDependency</code> node exists with a <code>BLOCKS</code> edge to the finding — the precondition for the DEFERRED status ever being legal.</p></li>
+        <li><p><strong>Read the deferral doctrine</strong> (below) and add the one mechanical piece: a <code>CheckDeferral(ctx, findingID)</code> that returns true only if an <code>ExternalDependency</code> node exists with a <code>BLOCKS</code> edge to the finding — the precondition for the DEFERRED status ever being legal.</p></li>
       </ol>
       <div class="callout note">
         <h4>Doctrine: zero internal deferrals</h4>

@@ -31,7 +31,8 @@
 	"validated":  {"promoted", "parked"},
 	"parked":     {"exploring"},
 	// promoted, rejected: terminal
-},</code></pre></div></li>
+},</code></pre></div>
+          <p>One two-line patch completes it: <code>AllocateDecisionID</code> stamps <code>d.status = $initial</code>, where <code>initial</code> is <code>"exploring"</code> when the type is <code>cir</code> and <code>"Proposed"</code> otherwise — a CIR is <em>born exploring</em>; Proposed isn't a CIR state, and without the patch the funnel's very first <code>update_status</code> dies on <code>invalid_transition</code>. (<code>RegisterDecision</code>'s hardcoded Proposed never lands on this path: its MERGE matches the allocator-created node, and ON MATCH doesn't touch status.)</p></li>
         <li><p><strong>Write <code>mini-ideate</code></strong> — your first skill:</p>
           <div class="code" data-file><span class="fname">.claude/skills/mini-ideate/SKILL.md</span><pre><code>---
 name: mini-ideate
@@ -59,16 +60,17 @@ this, STOP and report it — duplicate capture is a process failure.
 2. Write `docs/cir/&lt;id-lowercase&gt;.md` from the template: Context /
    Idea / Riskiest assumption / Smallest test.
 3. `register_decision(id, "cir", path, title, eli10)`.
-4. `update_status(id, "exploring", "captured via mini-ideate")`.
+4. `query_node(id)` — it must already read "exploring" (the allocator
+   births CIRs there; "Proposed" means your task-1 patch is missing).
 
 ## Phase 4 — Report
 Show the operator: the id, the file path, the riskiest assumption, and
 the recommended next step (/mini-challenge). Done means: file on disk,
 node in graph, status exploring — verify all three by reading them back.</code></pre></div></li>
         <li><p><strong>Write <code>mini-promote</code></strong> in the same shape (<code>.claude/skills/mini-promote/SKILL.md</code>): Phase 1 verify the CIR is <code>validated</code> (STOP otherwise); Phase 2 classify the record type by the week-3 disambiguators (ADR? PDR? DDR? WoW?) and ask the operator to confirm; Phase 3 allocate the new id, write the record from the type's template, register it, <code>create_edge(cir → new, PROMOTES_TO)</code>; Phase 4 flip the CIR to <code>promoted</code> and write the promoted-to pointer back into the CIR file. <b>Verify-or-mark:</b> after every graph write, read it back; if a write can't be verified, say so loudly and stop — never report success on faith.</p></li>
-        <li><p><strong>Run the funnel for real.</strong> In Claude Code: <code>/mini-ideate</code> with a genuine idea you had during the course (there's a backlog in your head by now — "the CLI should validate JSON props before sending", "search should rank title hits higher"). Then challenge it yourself as DA (does it survive the riskiest assumption?), <code>update_status → validated</code> with your reasoning, and <code>/mini-promote</code> it into a real record.</p></li>
+        <li><p><strong>Run the funnel for real.</strong> In Claude Code: <code>/mini-ideate</code> with a genuine idea you had during the course (there's a backlog in your head by now — "the CLI should validate JSON props before sending", "search should rank title hits higher"). Then challenge it yourself as DA — walk it <code>exploring → challenged</code> while you interrogate the riskiest assumption, then <code>→ validated</code> with your reasoning — and <code>/mini-promote</code> it into a real record.</p></li>
       </ol>
-      <div class="callout check"><h4>Checkpoint</h4><p>The full funnel ran: CIR file + node (exploring → validated → promoted), a PROMOTES_TO edge, a new Accepted-able record — and the transcript shows the agent following phases in order, including reading its writes back.</p></div>
+      <div class="callout check"><h4>Checkpoint</h4><p>The full funnel ran: CIR file + node (exploring → challenged → validated → promoted), a PROMOTES_TO edge, a new Accepted-able record — and the transcript shows the agent following phases in order, including reading its writes back.</p></div>
       <div class="callout war"><h4>Why it exists</h4><p>The real <code>bld-promote</code> gained its verify-or-mark contract after hosted graph writes silently failed mid-skill: the skill reported success, the graph disagreed, and the drift surfaced days later. Now every mandated write is read back, and an unverified write leaves a marker file and holds the CIR flip. Distributed-systems humility, applied to process tooling.</p></div>
     </div>
   </details>
@@ -87,47 +89,59 @@ node in graph, status exploring — verify all three by reading them back.</code
           <div class="code" data-file><span class="fname">server/internal/graph/sessions.go</span><pre><code>package graph
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
-func (s *Store) AssignAgent(agentType, respID string) (string, error) {
-	if _, err := s.GetNode(respID); err != nil {
+func (s *Store) AssignAgent(ctx context.Context, agentType, respID string) (string, error) {
+	if _, err := s.GetNode(ctx, respID); err != nil {
 		return "", err
 	}
 	id := "session-" + uuid.NewString()
-	if err := s.CreateNode(Node{ID: id, Type: "AgentSession", Status: "active",
+	if err := s.CreateNode(ctx, Node{ID: id, Type: "AgentSession", Status: "active",
 		Props: map[string]any{"agent_type": agentType}}); err != nil {
 		return "", err
 	}
-	return id, s.CreateEdge(id, respID, EdgeWorksOn)
+	return id, s.CreateEdge(ctx, id, respID, EdgeWorksOn)
 }
 
-// ClaimWork: atomic compare-and-set. The UPDATE only wins if the WP
-// is still NOT_STARTED — rows-affected 0 means someone beat us to it.
-func (s *Store) ClaimWork(sessionID, wpID string) (bool, error) {
-	res, err := s.db.Exec(`
-		UPDATE nodes SET status = 'BUILDING',
-		  updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
-		WHERE id = ? AND project_id = ? AND type = 'WorkPackage'
-		  AND status IN ('NOT_STARTED','SPECIFIED')`,
-		wpID, s.projectID)
+// ClaimWork: atomic compare-and-set in ONE Cypher statement — the
+// conditional SET fires only while the WP is still claimable, and the
+// RETURN row tells us whether we won. Under concurrent writers,
+// Memgraph's MVCC may instead abort one side with a transient
+// conflict — that is ALSO "lost the race", never a failure.
+func (s *Store) ClaimWork(ctx context.Context, sessionID, wpID string) (bool, error) {
+	res, err := s.run(ctx, `
+		MATCH (wp:WorkPackage {id: $id, project_id: $pid})
+		WHERE wp.status IN ['NOT_STARTED', 'SPECIFIED']
+		WITH wp, wp.status AS prior
+		SET wp.status = 'BUILDING', wp.updated_at = $now
+		RETURN prior`, map[string]any{"id": wpID, "now": nowRFC3339()})
 	if err != nil {
+		if neo4j.IsRetryable(err) {
+			return false, nil // write-write conflict: someone beat us to it
+		}
 		return false, fmt.Errorf("claim: %w", err)
 	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
+	if len(res.Records) == 0 {
 		return false, nil // already claimed — not an error, a race lost
 	}
 	// Record the claim: changelog + WORKS_ON, best-effort but loud.
-	s.db.Exec(`INSERT INTO changelog (project_id,node_id,from_status,to_status,reason,at)
-		VALUES (?,?,?,?,?,strftime('%Y-%m-%dT%H:%M:%SZ','now'))`,
-		s.projectID, wpID, "NOT_STARTED", "BUILDING", "claimed by "+sessionID)
-	return true, s.CreateEdge(sessionID, wpID, EdgeWorksOn)
+	// from_status is the CAS-captured prior — the CAS admits both
+	// NOT_STARTED and SPECIFIED, and an audit row must never guess.
+	prior, _, _ := neo4j.GetRecordValue[string](res.Records[0], "prior")
+	s.run(ctx, `CREATE (c:ChangelogEntry {id: $cid, project_id: $pid,
+		node_id: $id, from_status: $from, to_status: 'BUILDING',
+		reason: $reason, created_at: $now, updated_at: $now})`,
+		map[string]any{"cid": "changelog-" + uuid.NewString(), "id": wpID,
+			"from": prior, "reason": "claimed by " + sessionID, "now": nowRFC3339()})
+	return true, s.CreateEdge(ctx, sessionID, wpID, EdgeWorksOn)
 }
 
-func (s *Store) CompleteAgent(sessionID, status, summary string) error {
+func (s *Store) CompleteAgent(ctx context.Context, sessionID, status, summary string) error {
 	if status == "completed" &amp;&amp; len(summary) &lt; 40 {
 		return fmt.Errorf("summary_required: 'completed' needs a real result "+
 			"summary (&gt;=40 chars) — what shipped, what's left, how you verified")
@@ -135,14 +149,14 @@ func (s *Store) CompleteAgent(sessionID, status, summary string) error {
 	if status != "completed" &amp;&amp; status != "failed" {
 		return fmt.Errorf("bad_terminal: completed | failed")
 	}
-	if err := s.UpdateNode(sessionID, map[string]any{"result_summary": summary}); err != nil {
+	if err := s.UpdateNode(ctx, sessionID, map[string]any{"result_summary": summary}); err != nil {
 		return err
 	}
-	return s.UpdateStatus(sessionID, status, "agent session closed")
+	return s.UpdateStatus(ctx, sessionID, status, "agent session closed")
 }</code></pre></div>
           <p>Add an AgentSession transition map (<code>"" → active; active → {completed, failed}</code>). Note the deliberate exception to your own week-2 law: <code>ClaimWork</code> writes status directly inside its atomic statement — <em>because the CAS and the transition are the same write</em>. Document that exception in the code and in a one-line WoW record; undocumented exceptions are how disciplines die.</p></li>
         <li><p><strong>Expose all three as tools</strong> plus <code>query_available_work()</code>: WPs whose status is NOT_STARTED/SPECIFIED and whose wave is the lowest incomplete wave — the planner's output becoming the dispatcher's input.</p></li>
-        <li><p><strong>Race it.</strong> A test that fires 10 goroutines at <code>ClaimWork</code> for the same WP: exactly one true, nine false, status BUILDING once. This test is the whole reason CAS exists — and SQLite's single-writer model makes it pass; know that this is where the real system leans on Neo4j transactions instead.</p></li>
+        <li><p><strong>Race it.</strong> A test that fires 10 goroutines at <code>ClaimWork</code> for the same WP: exactly one true, nine false, status BUILDING once. Some losers return via the empty-result path, some via an MVCC conflict abort — the code folds both into "lost", which is the point of the test. This is where mini and real genuinely share semantics: a single-statement compare-and-set over Bolt.</p></li>
       </ol>
       <div class="callout check"><h4>Checkpoint</h4><p>Race test green (run with <code>-race</code>); <code>complete_agent("completed", "done")</code> is refused for the thin summary; the session graph shows who touched what, when, and what they claimed happened.</p></div>
     </div>
@@ -198,7 +212,7 @@ func New(st *graph.Store) http.Handler {
 	})
 
 	mux.HandleFunc("GET /api/pipeline", func(w http.ResponseWriter, r *http.Request) {
-		resps, err := st.QueryAll("Responsibility", "")
+		resps, err := st.QueryAll(r.Context(), "Responsibility", "")
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -207,7 +221,7 @@ func New(st *graph.Store) http.Handler {
 	})
 
 	mux.HandleFunc("GET /api/findings", func(w http.ResponseWriter, r *http.Request) {
-		findings, err := st.QueryAll("Finding", r.URL.Query().Get("status"))
+		findings, err := st.QueryAll(r.Context(), "Finding", r.URL.Query().Get("status"))
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -216,7 +230,7 @@ func New(st *graph.Store) http.Handler {
 	})
 
 	mux.HandleFunc("GET /api/responsibilities/{id}", func(w http.ResponseWriter, r *http.Request) {
-		pkg, err := st.AssembleContext(r.PathValue("id"))
+		pkg, err := st.AssembleContext(r.Context(), r.PathValue("id"))
 		if err != nil {
 			status := 500
 			if strings.Contains(err.Error(), "not found") {
@@ -232,7 +246,7 @@ func New(st *graph.Store) http.Handler {
 	mux.HandleFunc("POST /api/findings/{id}/resolve", func(w http.ResponseWriter, r *http.Request) {
 		var body struct{ Resolution, VerificationNote string }
 		json.NewDecoder(r.Body).Decode(&amp;body)
-		if err := st.ResolveFinding(r.PathValue("id"), body.Resolution,
+		if err := st.ResolveFinding(r.Context(), r.PathValue("id"), body.Resolution,
 			"decision-authority", body.VerificationNote); err != nil {
 			http.Error(w, err.Error(), 422)
 			return

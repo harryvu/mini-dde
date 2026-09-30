@@ -39,7 +39,7 @@ import (
 
 type Config struct {
 	ProjectID string `yaml:"project_id"`
-	DBPath    string `yaml:"db_path"`
+	BoltURI   string `yaml:"bolt_uri"`
 }
 
 // Load: MINIDDE_CONFIG env → default .minidde/project.yaml.
@@ -60,12 +60,12 @@ func Load() (Config, error) {
 	if c.ProjectID == "" {
 		return Config{}, fmt.Errorf("config_invalid: project_id is required")
 	}
-	if c.DBPath == "" {
-		c.DBPath = "minidde.db"
+	if c.BoltURI == "" {
+		c.BoltURI = "bolt://localhost:7687"
 	}
 	return c, nil
 }</code></pre></div>
-          <p>Add <code>db_path: "minidde.db"</code> to your <code>.minidde/project.yaml</code>.</p></li>
+          <p>Your <code>.minidde/project.yaml</code> already carries both keys from week 1 — the loader is where defaults and validation live, not the callers.</p></li>
         <li><p><strong>Create the registry skeleton and the <code>mcp</code> subcommand:</strong></p>
           <div class="code" data-file><span class="fname">server/internal/tools/registry.go</span><pre><code>package tools
 
@@ -87,11 +87,11 @@ func RegisterAll(srv *server.MCPServer, st *graph.Store) {
 	if err != nil {
 		return err
 	}
-	st, err := graph.Open(cfg.DBPath, cfg.ProjectID)
+	st, err := graph.Open(ctx, cfg.BoltURI, cfg.ProjectID)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer st.Close(ctx)
 	srv := server.NewMCPServer("mini-dde", "0.1.0")
 	tools.RegisterAll(srv, st)
 	return server.ServeStdio(srv)</code></pre></div>
@@ -125,7 +125,7 @@ func registerQueryTools(srv *server.MCPServer, st *graph.Store) {
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			n, err := st.GetNode(id)
+			n, err := st.GetNode(ctx, id)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -175,7 +175,7 @@ func registerQueryTools(srv *server.MCPServer, st *graph.Store) {
 	//         query_all(node_type, status?)
 	//         neighbors(id, dir, type?)
 }</code></pre></div>
-          <p>For <code>create_node</code>'s handler, decode <code>props</code> with <code>req.GetArguments()["props"]</code> (assert to <code>map[string]any</code>), map the <code>edges</code> array into <code>[]graph.BundledEdge</code>, and call <code>CreateNodeWithEdges</code>. Every store error goes back via <code>NewToolResultError(err.Error())</code> — your structured codes ride through intact.</p></li>
+          <p>For <code>create_node</code>'s handler, decode <code>props</code> with <code>req.GetArguments()["props"]</code> (assert to <code>map[string]any</code>), map the <code>edges</code> array into <code>[]graph.BundledEdge</code>, and call <code>CreateNodeWithEdges(ctx, …)</code> — the handler's own <code>ctx</code> threads straight through to the store. Every store error goes back via <code>NewToolResultError(err.Error())</code> — your structured codes ride through intact.</p></li>
         <li><p><strong>Make <code>update_status</code> teach its own remedy.</strong> When <code>ValidateTransition</code> rejects, wrap the message: append the list of legal next statuses from the map. An agent that reads <code>invalid_transition: … legal from BUILDING: [BUILT IN_REVIEW BLOCKED]</code> self-corrects in one turn instead of three.</p></li>
         <li><p><strong>Add <code>register_decision</code> and <code>allocate_decision_id</code></strong> in a <code>governance.go</code> group — thin wrappers over week 3's store methods. The allocator tool is how agents will mint CIR/xDR ids in week 7's skills; caller-supplied decision ids get <code>NewToolResultError("caller_supplied_id_forbidden: ids are server-allocated")</code>.</p></li>
         <li><p><strong>Re-run the inspector</strong> and drive a full mini-flow by hand: allocate a decision id → create a Responsibility governed by it → walk it NOT_STARTED→DESIGNING with reasons → query it back. You are now doing, by hand, exactly what an agent will do autonomously in week 7.</p></li>
@@ -187,61 +187,66 @@ func registerQueryTools(srv *server.MCPServer, st *graph.Store) {
   <details class="lesson" data-week="week4" id="l43">
     <summary><span class="lnum">4.3</span><span class="ltitle">Search &amp; the graph-first habit</span><span class="lconcept">search</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l43" aria-label="Mark lesson 4.3 done"></label><span class="chev">▶</span></summary>
     <div class="lbody">
-      <p class="lead">"Query the graph before searching files" only works if the graph is queryable by <em>meaning-ish</em> lookups, not just by id. The real system has two search tools — keyword full-text and semantic/vector — with a routing rule (semantic for concepts, keyword for exact tokens, always bound the result set). You'll build the keyword half with SQLite FTS5 and encode the routing rule as agent context.</p>
+      <p class="lead">"Query the graph before searching files" only works if the graph is queryable by <em>meaning-ish</em> lookups, not just by id. The real system has two search tools — keyword full-text and semantic/vector — with a routing rule (semantic for concepts, keyword for exact tokens, always bound the result set). You'll build the keyword half as a search property maintained at write time and queried in Cypher, and encode the routing rule as agent context.</p>
       <div class="callout real">
         <h4>In the real system</h4>
         <p><code>search</code> (full-text, returns full node bodies — always pass <code>node_types</code> and a small <code>limit</code>) vs <code>semantic_search</code> (Qdrant vectors, lighter payloads, the default for concept lookups) — the selection discipline is <code>.claude/rules/bld-mcp-routing.md</code> § "Tool selection". The learning tools (<code>register_finding</code>, <code>register_escalation</code>, <code>resolve_*</code>) live in their own registry group.</p>
       </div>
       <h4>Tasks</h4>
       <ol class="steps">
-        <li><p><strong>Add an FTS5 index</strong> kept in sync at write time. In <code>store.go</code>'s schema:</p>
-          <div class="code"><pre><code>CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts
-  USING fts5(id UNINDEXED, project_id UNINDEXED, body);</code></pre></div>
-          <p>At the end of <code>CreateNode</code> and <code>UpdateNode</code>, upsert the searchable text (delete-then-insert by id is fine):</p>
+        <li><p><strong>Maintain a search index at write time.</strong> The idea to keep from full-text engines: the index is maintained <em>when you write</em>, not scanned into existence per query. Here it's one lowercase <code>_search</code> property per node — call <code>indexNode</code> at the end of <code>CreateNode</code> and <code>UpdateNode</code>, and add a <code>case "_search":</code> skip to <code>nodeFromRecord</code> so the index never leaks into <code>Props</code>:</p>
           <div class="code" data-file><span class="fname">server/internal/graph/search.go</span><pre><code>package graph
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
-func (s *Store) indexNode(n Node) {
+// indexNode maintains a lowercase _search property — a one-property
+// stand-in for a full-text index, refreshed on every write.
+func (s *Store) indexNode(ctx context.Context, n Node) {
 	body, _ := json.Marshal(n.Props)
-	s.db.Exec(`DELETE FROM nodes_fts WHERE id = ? AND project_id = ?`,
-		n.ID, s.projectID)
-	s.db.Exec(`INSERT INTO nodes_fts (id, project_id, body) VALUES (?, ?, ?)`,
-		n.ID, s.projectID, n.ID+" "+string(body))
+	s.run(ctx, `MATCH (n {id: $id, project_id: $pid})
+		SET n._search = $text`, map[string]any{
+		"id":   n.ID,
+		"text": strings.ToLower(n.ID + " " + string(body)),
+	})
 }
 
-// Search: keyword full-text, bounded. limit &lt;= 20 — an unbounded
-// search result is a context-window attack on your own agent.
-func (s *Store) Search(query, nodeType string, limit int) ([]Node, error) {
+// Search: keyword lookup over _search, bounded. limit &lt;= 20 — an
+// unbounded search result is a context-window attack on your own
+// agent.
+func (s *Store) Search(ctx context.Context, query, nodeType string, limit int) ([]Node, error) {
 	if limit &lt;= 0 || limit &gt; 20 {
 		limit = 10
 	}
-	rows, err := s.db.Query(`
-		SELECT f.id FROM nodes_fts f
-		JOIN nodes n ON n.id = f.id AND n.project_id = f.project_id
-		WHERE f.project_id = ? AND nodes_fts MATCH ?
-		  AND (? = '' OR n.type = ?)
-		LIMIT ?`, s.projectID, query, nodeType, nodeType, limit)
+	res, err := s.run(ctx, `
+		MATCH (n {project_id: $pid})
+		WHERE n._search CONTAINS toLower($q)
+		  AND ($type = '' OR $type IN labels(n))
+		RETURN labels(n)[0] AS type, n
+		ORDER BY n.id LIMIT $limit`, map[string]any{
+		"q": query, "type": nodeType, "limit": limit,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
-	defer rows.Close()
 	var out []Node
-	for rows.Next() {
-		var id string
-		rows.Scan(&amp;id)
-		if n, err := s.GetNode(id); err == nil {
-			out = append(out, n)
+	for _, rec := range res.Records {
+		n, err := nodeFromRecord(rec)
+		if err != nil {
+			return nil, err
 		}
+		out = append(out, n)
 	}
-	return out, rows.Err()
-}</code></pre></div></li>
+	return out, nil
+}</code></pre></div>
+          <p>(A scan-with-CONTAINS is honest at course scale; Memgraph also ships an experimental text-search module, and the real system's semantic half rides Qdrant vectors — both are upgrades to this same seam, not different ideas.)</p></li>
         <li><p><strong>Expose the learning group as tools:</strong> <code>search(query, node_type?, limit?)</code>, <code>register_finding</code> (all six fields required in the schema — let the schema teach the contract), <code>resolve_finding</code>, <code>confirm_finding</code>, <code>register_escalation</code>, <code>resolve_escalation</code>, <code>check_deferral</code>. All thin wrappers over week 3's store methods, in <code>server/internal/tools/learning.go</code>.</p></li>
         <li><p><strong>Add <code>query_responsibility</code></strong> — the first <em>composite</em> read: given an id, return the node + its work packages (via <code>BELONGS_TO</code> in-edges) + governing decisions (<code>GOVERNED_BY</code> out-edges) + open findings (<code>AFFECTS</code> in-edges, status OPEN). One tool call answering "tell me everything about this work" is the seed of week 5's context packages.</p></li>
-        <li><p><strong>Reindex your seed</strong> (drop <code>minidde.db</code>, re-run seed + registrations) and verify in the inspector: <code>search</code> for "booking" finds the Responsibility and the PDR; with <code>node_type: "Decision"</code> only the PDR.</p></li>
+        <li><p><strong>Reindex your seed</strong> (wipe the project in mgconsole — <code>MATCH (n {project_id: 'mini-c2c'}) DETACH DELETE n;</code> — then re-run seed + registrations) and verify in the inspector: <code>search</code> for "booking" finds the Responsibility and the PDR; with <code>node_type: "Decision"</code> only the PDR.</p></li>
       </ol>
       <div class="callout check"><h4>Checkpoint</h4><p><code>search("contract", "", 10)</code> returns bounded, relevant results; <code>query_responsibility("booking-core")</code> returns node + WPs + decisions + findings in one payload.</p></div>
     </div>
@@ -272,7 +277,7 @@ func (s *Store) Search(query, nodeType string, limit int) ([]Node, error) {
           <div class="code" data-file><span class="fname">.claude/rules/graph-first.md</span><pre><code># Knowledge Graph First
 
 &lt;implements&gt;
-  &lt;xdr&gt;ADR-sqlite-mini-dde-graph-&lt;your-suffix&gt;&lt;/xdr&gt;
+  &lt;xdr&gt;ADR-memgraph-is-mini-&lt;your-suffix&gt;&lt;/xdr&gt;
 &lt;/implements&gt;
 
 The mini-DDE graph is the source of truth. Query it before searching files.
@@ -297,7 +302,7 @@ finding for the worst one you find, severity medium, affecting booking-core."</c
         <li><p><strong>Watch for the two classic failures</strong> and enjoy your guards catching them: the agent inventing its own finding id (blocked — server allocates), and the agent trying <code>update_node</code> with a status (blocked with the remedy in the message). When a guard fires, read the transcript: the structured error told the agent how to self-correct. That's the design working.</p></li>
         <li><p><strong>Commit everything</strong>, including <code>.mcp.json</code> and the rules file — agent context is code.</p></li>
       </ol>
-      <div class="callout check"><h4>Checkpoint — end of week 4</h4><p>All three prompts succeed with the agent using only MCP tools (no sqlite3 shell calls — check the transcript). <code>ls --type Finding</code> shows the agent's finding, edges intact, id server-minted.</p></div>
+      <div class="callout check"><h4>Checkpoint — end of week 4</h4><p>All three prompts succeed with the agent using only MCP tools (no shell detours into mgconsole — check the transcript). <code>ls --type Finding</code> shows the agent's finding, edges intact, id server-minted.</p></div>
       <div class="callout war"><h4>Why it exists</h4><p>Why ban piping JSON-RPC into the binary when tools exist? Because a second access path is a second place where validation can drift — the real rule exists because agents <em>did</em> discover <code>echo '{"jsonrpc"...}' | go run .</code> as a workaround when a tool was missing. Every capability gap becomes an escalation, never a bypass.</p></div>
     </div>
   </details>

@@ -3,12 +3,12 @@
   <header class="weekhead">
     <p class="eyebrow">Week 1 · Part I — the graph kernel</p>
     <h2>The graph is the truth</h2>
-    <p class="wintro">DDE's founding bet: the durable record of a software project — its decisions, responsibilities, contracts, findings — lives in a <b>queryable graph</b>, not in tickets, wikis, or people's heads. This week you internalize why, then build the smallest honest version: a project-scoped node/edge store in Go over SQLite, with a CLI.</p>
+    <p class="wintro">DDE's founding bet: the durable record of a software project — its decisions, responsibilities, contracts, findings — lives in a <b>queryable graph</b>, not in tickets, wikis, or people's heads. This week you internalize why, then build the smallest honest version: a project-scoped node/edge store in Go over <b>Memgraph</b> (Cypher over the Bolt protocol — the same query language and driver family as the real system), with a CLI.</p>
     <ul class="wgoals">
       <li><b>Concept:</b> the four planes — intent, context, mechanism, state</li>
-      <li><b>Build:</b> <code>internal/graph</code> — nodes, edges, queries</li>
+      <li><b>Build:</b> <code>internal/graph</code> — nodes, edges, queries in Cypher</li>
       <li><b>Build:</b> a <code>minidde</code> CLI with JSON output</li>
-      <li><b>Habit:</b> idempotent writes, project scoping by construction</li>
+      <li><b>Habit:</b> idempotent MERGE writes, project scoping by construction</li>
     </ul>
     <div class="wtools"><button data-expand="week1">Expand all lessons</button><button data-collapse="week1">Collapse all</button></div>
   </header>
@@ -34,12 +34,17 @@ go 1.22
 use ./server
 EOF</code></pre></div>
           <p>The real repo is multi-module Go with no root <code>go.mod</code> (CLAUDE.md § Build &amp; test) — <code>go.work</code> gives you the same shape from day one; the capstone adds more modules under <code>use</code> later.</p></li>
+        <li><p><strong>Start the graph database.</strong> Memgraph runs as one Docker container, speaking Bolt on 7687 (the same port family as the real system's Neo4j). The named volume keeps snapshots across restarts:</p>
+          <div class="code"><pre><code>docker run -d --name memgraph -p 7687:7687 \
+  -v minidde-data:/var/lib/memgraph memgraph/memgraph</code></pre></div>
+          <p>Get a Cypher shell anytime with <code>docker exec -it memgraph mgconsole</code> (exit with ctrl-d). Use the plain <code>memgraph/memgraph</code> image — the old all-in-one <code>memgraph-platform</code> bundle is deprecated. If you want a visual graph UI, run Memgraph Lab as its own container on a shifted port (<code>docker run -d -p 3001:3000 memgraph/lab</code>) or use the desktop app; keep 3000 itself free — your Next.js apps will want it in week 7.</p></li>
         <li><p><strong>Pin your project identity.</strong> The real server reads <code>.nexus-dde/project.yaml</code> and bakes <code>project_id</code> into every query — sister tenants share one database, partitioned by that property. Yours does the same:</p>
-          <div class="code" data-file><span class="fname">.minidde/project.yaml</span><pre><code>project_id: "mini-c2c"</code></pre></div></li>
+          <div class="code" data-file><span class="fname">.minidde/project.yaml</span><pre><code>project_id: "mini-c2c"
+bolt_uri: "bolt://localhost:7687"</code></pre></div></li>
         <li><p><strong>Sketch the target layout</strong> so every later lesson has a home. Create the directories now (empty is fine):</p>
           <div class="code"><pre><code>mini-dde/
 ├── go.work
-├── .minidde/project.yaml      # project identity (week 1)
+├── .minidde/project.yaml      # project identity + Bolt URI (week 1)
 ├── server/                    # the mini-DDE server
 │   ├── cmd/minidde/           # CLI + MCP + HTTP entrypoint
 │   └── internal/
@@ -50,34 +55,35 @@ EOF</code></pre></div>
 ├── .claude/{rules,hooks,skills}/  # agent context + enforcement (weeks 4–7)
 ├── .githooks/                 # pre-commit gate (week 6)
 ├── pcc/                       # Next.js mini-PCC (week 7)
-└── capstone/                  # mini-C2C (week 8)</code></pre></div></li>
+└── capstone/                  # mini-C2C (week 8)
+# graph data lives in the memgraph container's volume — not in the repo</code></pre></div></li>
         <li><p><strong>Commit.</strong> <code>git add -A &amp;&amp; git commit -m "week 1: workspace skeleton"</code>. One commit per lesson from here on — your history becomes the course log.</p></li>
       </ol>
-      <div class="callout check"><h4>Checkpoint</h4><p><code>go work sync</code> exits clean; you can say the four planes from memory; you can point at where each will live in your tree.</p></div>
+      <div class="callout check"><h4>Checkpoint</h4><p><code>go work sync</code> exits clean; <code>echo 'RETURN 1;' | docker exec -i memgraph mgconsole</code> answers; you can say the four planes from memory and point at where each will live in your tree.</p></div>
       <div class="callout war"><h4>Why it exists</h4><p>Before Ono relocated authority into its own xDRs, vocabulary came from an upstream repo whose own files disagreed on the spine identifier, and questions raised upstream had no SLA — one open term cost ~2h of agent time in a single day. The conclusion recorded in <code>ADR-ono-xdrs-source-ESHJ</code>: "the authority chain has been ceremonial." Plane separation with a one-way hierarchy is the fix, and your mini-DDE will enforce it too.</p></div>
     </div>
   </details>
 
   <details class="lesson" data-week="week1" id="l12">
-    <summary><span class="lnum">1.2</span><span class="ltitle">A node store in ~150 lines</span><span class="lconcept">create_node</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l12" aria-label="Mark lesson 1.2 done"></label><span class="chev">▶</span></summary>
+    <summary><span class="lnum">1.2</span><span class="ltitle">A node store on Cypher</span><span class="lconcept">create_node</span><label class="ldone" title="Mark done"><input type="checkbox" data-lesson="l12" aria-label="Mark lesson 1.2 done"></label><span class="chev">▶</span></summary>
     <div class="lbody">
-      <p class="lead">A graph node in DDE is deliberately generic: an <b>id</b>, a <b>type</b> (Responsibility, Finding, Decision…), a <b>status</b>, and a bag of <b>properties</b>. The store bakes the <code>project_id</code> in at construction so no caller can forget it, and writes are <b>idempotent merges</b>: creating a node that exists updates its properties instead of erroring — the same <code>MERGE … ON CREATE SET n = $props ON MATCH SET n += $props</code> semantics the real server runs in Cypher, which is what lets agents safely retry.</p>
+      <p class="lead">A graph node in DDE is deliberately generic: an <b>id</b>, a <b>type</b> (Responsibility, Finding, Decision… — stored as the node's <em>label</em>), a <b>status</b>, and a bag of <b>properties</b>. The store bakes the <code>project_id</code> in at construction so no caller can forget it, and writes are <b>idempotent merges</b>: <code>MERGE … ON CREATE SET n += $props ON MATCH SET n += $props</code> — creating a node that exists updates its properties instead of erroring, which is what lets agents safely retry. This is not an approximation of the real system; it's the same statement shape against the same wire protocol.</p>
       <div class="callout real">
         <h4>In the real system</h4>
-        <p>The schema is one 2,347-line file: <code>builder/server/internal/graph/model.go</code> — "63 node types, 63 edge types, status enums, valid status transitions". The store is <code>internal/graph/store.go</code>: a <code>neo4j.Driver</code> + <code>projectID</code>, every query injecting <code>$pid</code>; <code>CreateNode</code> at <code>store.go:175-210</code> is the idempotent MERGE. There's no ORM — hand-written Cypher constants, one method per use case.</p>
+        <p>The schema is one 2,347-line file: <code>builder/server/internal/graph/model.go</code> — "63 node types, 63 edge types, status enums, valid status transitions". The store is <code>internal/graph/store.go</code>: a <code>neo4j.Driver</code> + <code>projectID</code>, every query injecting <code>$pid</code>; <code>CreateNode</code> at <code>store.go:175-210</code> is the idempotent MERGE. There's no ORM — hand-written Cypher constants, one method per use case. The real server pins driver v6; you'll use the v5 line, which is API-stable and works against Memgraph's Bolt.</p>
       </div>
       <h4>Tasks</h4>
       <ol class="steps">
-        <li><p><strong>Add the SQLite driver</strong> (pure Go, no CGO — friendlier for juniors than the C driver):</p>
-          <div class="code"><pre><code>cd server &amp;&amp; go get modernc.org/sqlite</code></pre></div></li>
+        <li><p><strong>Add the driver</strong> — the same family the real server uses:</p>
+          <div class="code"><pre><code>cd server &amp;&amp; go get github.com/neo4j/neo4j-go-driver/v5</code></pre></div></li>
         <li><p><strong>Define the model.</strong> Start your own miniature <code>model.go</code>:</p>
           <div class="code" data-file><span class="fname">server/internal/graph/model.go</span><pre><code>package graph
 
 import "time"
 
 // Node is the one generic shape every graph entity shares.
-// Type distinguishes Responsibility from Finding from Decision;
-// Props carries everything type-specific.
+// Type becomes the Memgraph label; Props carries everything
+// type-specific.
 type Node struct {
 	ID        string         `json:"id"`
 	Type      string         `json:"type"`
@@ -95,143 +101,197 @@ type Edge struct {
 
 // The node types the mini-DDE admits. The real model.go defines 63;
 // we start with the load-bearing core and grow it week by week.
+// This allowlist is ALSO the label-injection guard (see CreateNode).
 var ValidNodeTypes = map[string]bool{
 	"Project": true, "Responsibility": true, "WorkPackage": true,
 	"Document": true, "Decision": true, "Finding": true,
 	"Escalation": true, "Pattern": true, "Verdict": true,
 	"Event": true, "Contract": true, "AgentSession": true,
 	"GateEvidence": true, "ExternalDependency": true,
+	"ChangelogEntry": true, // server-minted in week 2
 }</code></pre></div></li>
-        <li><p><strong>Write the store.</strong> Constructor opens the DB, applies the schema, and bakes in the project id:</p>
+        <li><p><strong>Write the store.</strong> Constructor connects over Bolt, verifies connectivity, and bakes in the project id. Context is always the first argument — the house rule (R4) you'll keep all course long:</p>
           <div class="code" data-file><span class="fname">server/internal/graph/store.go</span><pre><code>package graph
 
 import (
-	"database/sql"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
 var ErrNotFound = errors.New("node not found")
 var ErrBadType = errors.New("unknown node type")
 
-const schema = `
-CREATE TABLE IF NOT EXISTS nodes (
-  id         TEXT NOT NULL,
-  project_id TEXT NOT NULL,
-  type       TEXT NOT NULL,
-  status     TEXT NOT NULL DEFAULT '',
-  props      TEXT NOT NULL DEFAULT '{}',
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  PRIMARY KEY (id, project_id)
-);
-CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(project_id, type);
-CREATE TABLE IF NOT EXISTS edges (
-  project_id TEXT NOT NULL,
-  src TEXT NOT NULL, dst TEXT NOT NULL, type TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  PRIMARY KEY (project_id, src, dst, type)
-);`
-
-// Store carries the connection AND the project identity — callers can
+// Store carries the driver AND the project identity — callers can
 // never forget project scoping because they never supply it.
 type Store struct {
-	db        *sql.DB
+	driver    neo4j.DriverWithContext
 	projectID string
 }
 
-func Open(path, projectID string) (*Store, error) {
-	db, err := sql.Open("sqlite", path)
+func Open(ctx context.Context, boltURI, projectID string) (*Store, error) {
+	driver, err := neo4j.NewDriverWithContext(boltURI, neo4j.NoAuth())
 	if err != nil {
-		return nil, fmt.Errorf("open %s: %w", path, err)
+		return nil, fmt.Errorf("bolt_driver: %w", err)
 	}
-	if _, err := db.Exec(schema); err != nil {
-		return nil, fmt.Errorf("apply schema: %w", err)
+	if err := driver.VerifyConnectivity(ctx); err != nil {
+		return nil, fmt.Errorf("memgraph_unreachable: is the container up? "+
+			"(docker start memgraph): %w", err)
 	}
-	return &amp;Store{db: db, projectID: projectID}, nil
+	return &amp;Store{driver: driver, projectID: projectID}, nil
 }
 
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close(ctx context.Context) error { return s.driver.Close(ctx) }
+
+// run executes one Cypher statement with $pid always injected — the
+// project-scoping-by-construction trick.
+func (s *Store) run(ctx context.Context, cypher string,
+	params map[string]any) (*neo4j.EagerResult, error) {
+	if params == nil {
+		params = map[string]any{}
+	}
+	params["pid"] = s.projectID
+	return neo4j.ExecuteQuery(ctx, s.driver, cypher, params,
+		neo4j.EagerResultTransformer)
+}
+
+// Fixed-width nanoseconds: lexicographic order IS time order, and
+// "latest wins" reads (week 6) can't tie within a second.
+func nowRFC3339() string {
+	return time.Now().UTC().Format("2006-01-02T15:04:05.000000000Z07:00")
+}
+
+// serializeProps: anything non-scalar is JSON-stringified before
+// storage. Memgraph could store nested maps natively — flattening is
+// a CHOICE, not a protocol limit: it keeps every property greppable,
+// string-comparable, and portable to Neo4j (whose properties really
+// are scalars/flat lists only), exactly like the real server's
+// serializeProps.
+func serializeProps(in map[string]any) map[string]any {
+	out := map[string]any{}
+	for k, v := range in {
+		switch v.(type) {
+		case nil, bool, int, int64, float64, string:
+			out[k] = v
+		default:
+			b, _ := json.Marshal(v)
+			out[k] = string(b)
+		}
+	}
+	return out
+}
 
 // CreateNode is an idempotent merge: insert on first sight, patch
 // props on repeat — the retry-safe write agents depend on.
-func (s *Store) CreateNode(n Node) error {
+// Cypher cannot parameterize labels, so the label is interpolated —
+// ONLY from the ValidNodeTypes allowlist (that check IS the injection
+// guard, mirroring the real store's ValidateNeo4jIdentifier contract);
+// values always travel as $parameters.
+func (s *Store) CreateNode(ctx context.Context, n Node) error {
 	if !ValidNodeTypes[n.Type] {
 		return fmt.Errorf("%w: %q", ErrBadType, n.Type)
 	}
-	props, err := json.Marshal(n.Props)
-	if err != nil {
-		return fmt.Errorf("marshal props: %w", err)
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, err = s.db.Exec(`
-		INSERT INTO nodes (id, project_id, type, status, props, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id, project_id) DO UPDATE SET
-		  props = json_patch(nodes.props, excluded.props),
-		  updated_at = excluded.updated_at`,
-		n.ID, s.projectID, n.Type, n.Status, string(props), now, now)
+	q := fmt.Sprintf(`
+		MERGE (n:%s {id: $id, project_id: $pid})
+		ON CREATE SET n += $props, n.status = $status,
+		              n.created_at = $now, n.updated_at = $now
+		ON MATCH SET  n += $props, n.updated_at = $now`, n.Type)
+	_, err := s.run(ctx, q, map[string]any{
+		"id": n.ID, "props": serializeProps(n.Props),
+		"status": n.Status, "now": nowRFC3339(),
+	})
 	if err != nil {
 		return fmt.Errorf("create node %s: %w", n.ID, err)
 	}
 	return nil
 }
 
-func (s *Store) GetNode(id string) (Node, error) {
-	var n Node
-	var props, created, updated string
-	err := s.db.QueryRow(`
-		SELECT id, type, status, props, created_at, updated_at
-		FROM nodes WHERE id = ? AND project_id = ?`,
-		id, s.projectID).Scan(&amp;n.ID, &amp;n.Type, &amp;n.Status, &amp;props, &amp;created, &amp;updated)
-	if errors.Is(err, sql.ErrNoRows) {
-		return n, fmt.Errorf("%w: %s", ErrNotFound, id)
-	}
+func (s *Store) GetNode(ctx context.Context, id string) (Node, error) {
+	res, err := s.run(ctx, `
+		MATCH (n {id: $id, project_id: $pid})
+		RETURN labels(n)[0] AS type, n`, map[string]any{"id": id})
 	if err != nil {
-		return n, fmt.Errorf("get node %s: %w", id, err)
+		return Node{}, fmt.Errorf("get node %s: %w", id, err)
 	}
-	_ = json.Unmarshal([]byte(props), &amp;n.Props)
-	n.CreatedAt, _ = time.Parse(time.RFC3339, created)
-	n.UpdatedAt, _ = time.Parse(time.RFC3339, updated)
+	if len(res.Records) == 0 {
+		return Node{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+	}
+	return nodeFromRecord(res.Records[0])
+}
+
+// nodeFromRecord splits bookkeeping fields out of the raw property
+// bag; everything else is user props.
+func nodeFromRecord(rec *neo4j.Record) (Node, error) {
+	typ, _, _ := neo4j.GetRecordValue[string](rec, "type")
+	raw, _, err := neo4j.GetRecordValue[neo4j.Node](rec, "n")
+	if err != nil {
+		return Node{}, fmt.Errorf("decode node: %w", err)
+	}
+	n := Node{Type: typ, Props: map[string]any{}}
+	for k, v := range raw.Props {
+		switch k {
+		case "id":
+			n.ID, _ = v.(string)
+		case "status":
+			n.Status, _ = v.(string)
+		case "created_at":
+			if s, ok := v.(string); ok {
+				n.CreatedAt, _ = time.Parse(time.RFC3339, s)
+			}
+		case "updated_at":
+			if s, ok := v.(string); ok {
+				n.UpdatedAt, _ = time.Parse(time.RFC3339, s)
+			}
+		case "project_id": // bookkeeping, never surfaced
+		default:
+			n.Props[k] = v
+		}
+	}
 	return n, nil
 }</code></pre></div>
-          <p>Two patterns to notice, both lifted from the real store: <b>sentinel errors wrapped with <code>%w</code></b> so callers use <code>errors.Is</code>, and <b>the merge-on-conflict write</b> (SQLite's <code>json_patch</code> plays the role of Cypher's <code>n += $props</code>).</p></li>
-        <li><p><strong>Prove it with a test</strong> — table-driven, no mock library, the house style:</p>
+          <p>Three patterns to notice, all lifted from the real store: <b>sentinel errors wrapped with <code>%w</code></b> so callers use <code>errors.Is</code>; <b>the allowlist-as-injection-guard</b> for interpolated labels; and <b>the MERGE write</b> — Cypher's <code>ON MATCH SET n += $props</code> is the merge-don't-error semantics verbatim.</p></li>
+        <li><p><strong>Prove it with a test</strong> — and steal a trick from multi-tenancy: each test gets its own <code>project_id</code>, so tests isolate <em>inside one shared database</em> and clean up by project. If Memgraph isn't running, skip rather than fail (the real repo's <code>ConnectOrSkip</code> pattern):</p>
           <div class="code" data-file><span class="fname">server/internal/graph/store_test.go</span><pre><code>package graph
 
 import (
+	"context"
 	"errors"
-	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func testStore(t *testing.T) *Store {
+func testStore(t *testing.T) (*Store, context.Context) {
 	t.Helper()
-	s, err := Open(filepath.Join(t.TempDir(), "test.db"), "mini-c2c")
+	ctx := context.Background()
+	pid := "test-" + strings.ToLower(t.Name())
+	s, err := Open(ctx, "bolt://localhost:7687", pid)
 	if err != nil {
-		t.Fatalf("open: %v", err)
+		t.Skipf("memgraph not running (docker start memgraph): %v", err)
 	}
-	t.Cleanup(func() { s.Close() })
-	return s
+	t.Cleanup(func() {
+		s.run(ctx, `MATCH (n {project_id: $pid}) DETACH DELETE n`, nil)
+		s.Close(ctx)
+	})
+	return s, ctx
 }
 
 func TestCreateNodeIsIdempotentMerge(t *testing.T) {
-	s := testStore(t)
+	s, ctx := testStore(t)
 	n := Node{ID: "booking-core", Type: "Responsibility",
 		Props: map[string]any{"name": "Booking core", "domain": "booking"}}
-	if err := s.CreateNode(n); err != nil {
+	if err := s.CreateNode(ctx, n); err != nil {
 		t.Fatalf("first create: %v", err)
 	}
 	// Second create with new props must merge, not error.
 	n.Props = map[string]any{"priority": "high"}
-	if err := s.CreateNode(n); err != nil {
+	if err := s.CreateNode(ctx, n); err != nil {
 		t.Fatalf("second create: %v", err)
 	}
-	got, err := s.GetNode("booking-core")
+	got, err := s.GetNode(ctx, "booking-core")
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -241,14 +301,14 @@ func TestCreateNodeIsIdempotentMerge(t *testing.T) {
 }
 
 func TestUnknownTypeRejected(t *testing.T) {
-	s := testStore(t)
-	err := s.CreateNode(Node{ID: "x", Type: "Widget"})
+	s, ctx := testStore(t)
+	err := s.CreateNode(ctx, Node{ID: "x", Type: "Widget"})
 	if !errors.Is(err, ErrBadType) {
 		t.Fatalf("want ErrBadType, got %v", err)
 	}
 }</code></pre></div></li>
       </ol>
-      <div class="callout check"><h4>Checkpoint</h4><p><code>cd server &amp;&amp; go test ./internal/graph/</code> — both tests green. Open the DB with <code>sqlite3</code> and confirm a node row exists with your <code>project_id</code> stamped on it.</p></div>
+      <div class="callout check"><h4>Checkpoint</h4><p><code>cd server &amp;&amp; go test ./internal/graph/</code> — both tests green (and they skip cleanly when the container is stopped — try it). In <code>mgconsole</code>: <code>MATCH (n:Responsibility) RETURN n.id, n.project_id;</code> shows your node with the project stamped on it.</p></div>
     </div>
   </details>
 
@@ -264,6 +324,8 @@ func TestUnknownTypeRejected(t *testing.T) {
       <ol class="steps">
         <li><p><strong>Declare the edge vocabulary.</strong> Append to <code>model.go</code>:</p>
           <div class="code" data-file><span class="fname">server/internal/graph/model.go (append)</span><pre><code>// Edge types, SOURCE → TARGET. A subset of the real 63.
+// Like ValidNodeTypes, this allowlist doubles as the injection guard
+// for interpolated relationship types.
 const (
 	EdgeBelongsTo    = "BELONGS_TO"     // WorkPackage → Responsibility
 	EdgeDocumentedBy = "DOCUMENTED_BY"  // Responsibility → Document
@@ -292,94 +354,94 @@ var ValidEdgeTypes = map[string]bool{
           <div class="code" data-file><span class="fname">server/internal/graph/edges.go</span><pre><code>package graph
 
 import (
+	"context"
 	"fmt"
-	"time"
 )
 
 // CreateEdge requires both endpoints to exist — an edge to a ghost
-// node is how graphs silently rot.
-func (s *Store) CreateEdge(src, dst, edgeType string) error {
+// node is how graphs silently rot. (A MATCH that finds nothing would
+// no-op SILENTLY — that's why we existence-check first, loudly.)
+func (s *Store) CreateEdge(ctx context.Context, src, dst, edgeType string) error {
 	if !ValidEdgeTypes[edgeType] {
 		return fmt.Errorf("unknown edge type %q", edgeType)
 	}
 	for _, id := range []string{src, dst} {
-		if _, err := s.GetNode(id); err != nil {
+		if _, err := s.GetNode(ctx, id); err != nil {
 			return fmt.Errorf("edge endpoint: %w", err)
 		}
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := s.db.Exec(`
-		INSERT INTO edges (project_id, src, dst, type, created_at)
-		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT DO NOTHING`,
-		s.projectID, src, dst, edgeType, now)
-	if err != nil {
+	q := fmt.Sprintf(`
+		MATCH (a {id: $src, project_id: $pid}),
+		      (b {id: $dst, project_id: $pid})
+		MERGE (a)-[:%s]-&gt;(b)`, edgeType)
+	if _, err := s.run(ctx, q, map[string]any{"src": src, "dst": dst}); err != nil {
 		return fmt.Errorf("create edge %s-[%s]-&gt;%s: %w", src, edgeType, dst, err)
 	}
 	return nil
 }
 
 // QueryAll lists nodes of a type, optionally filtered by status.
-func (s *Store) QueryAll(nodeType, status string) ([]Node, error) {
-	q := `SELECT id FROM nodes WHERE project_id = ? AND type = ?`
-	args := []any{s.projectID, nodeType}
-	if status != "" {
-		q += ` AND status = ?`
-		args = append(args, status)
+func (s *Store) QueryAll(ctx context.Context, nodeType, status string) ([]Node, error) {
+	if !ValidNodeTypes[nodeType] {
+		return nil, fmt.Errorf("%w: %q", ErrBadType, nodeType)
 	}
-	q += ` ORDER BY id`
-	rows, err := s.db.Query(q, args...)
+	q := fmt.Sprintf(`
+		MATCH (n:%s {project_id: $pid})
+		WHERE $status = '' OR n.status = $status
+		RETURN labels(n)[0] AS type, n
+		ORDER BY n.id`, nodeType)
+	res, err := s.run(ctx, q, map[string]any{"status": status})
 	if err != nil {
 		return nil, fmt.Errorf("query %s: %w", nodeType, err)
 	}
-	defer rows.Close()
 	var out []Node
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&amp;id); err != nil {
-			return nil, err
-		}
-		n, err := s.GetNode(id)
+	for _, rec := range res.Records {
+		n, err := nodeFromRecord(rec)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, n)
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
-// Neighbors walks one hop. dir is "out" (src=id) or "in" (dst=id);
-// edgeType "" means any.
-func (s *Store) Neighbors(id, dir, edgeType string) ([]Edge, error) {
-	col := "src"
+// Neighbors walks one hop. dir is "out" (edges leaving id) or "in"
+// (edges arriving at id); edgeType "" means any.
+func (s *Store) Neighbors(ctx context.Context, id, dir, edgeType string) ([]Edge, error) {
+	q := `MATCH (a {id: $id, project_id: $pid})-[r]-&gt;(b)
+	      WHERE ($t = '' OR type(r) = $t) AND b.project_id = $pid
+	      RETURN a.id AS src, b.id AS dst, type(r) AS type`
 	if dir == "in" {
-		col = "dst"
+		q = `MATCH (b)-[r]-&gt;(a {id: $id, project_id: $pid})
+		     WHERE ($t = '' OR type(r) = $t) AND b.project_id = $pid
+		     RETURN b.id AS src, a.id AS dst, type(r) AS type`
 	}
-	q := fmt.Sprintf(`SELECT src, dst, type FROM edges
-		WHERE project_id = ? AND %s = ?`, col)
-	args := []any{s.projectID, id}
-	if edgeType != "" {
-		q += ` AND type = ?`
-		args = append(args, edgeType)
-	}
-	rows, err := s.db.Query(q, args...)
+	res, err := s.run(ctx, q, map[string]any{"id": id, "t": edgeType})
 	if err != nil {
 		return nil, fmt.Errorf("neighbors of %s: %w", id, err)
 	}
-	defer rows.Close()
 	var out []Edge
-	for rows.Next() {
+	for _, rec := range res.Records {
 		var e Edge
-		if err := rows.Scan(&amp;e.Src, &amp;e.Dst, &amp;e.Type); err != nil {
-			return nil, err
-		}
+		e.Src, _, _ = neo4j.GetRecordValue[string](rec, "src")
+		e.Dst, _, _ = neo4j.GetRecordValue[string](rec, "dst")
+		e.Type, _, _ = neo4j.GetRecordValue[string](rec, "type")
 		out = append(out, e)
 	}
-	return out, rows.Err()
-}</code></pre></div></li>
-        <li><p><strong>Test the walk.</strong> Create a Responsibility, a WorkPackage, a <code>BELONGS_TO</code> edge; assert <code>Neighbors(resp, "in", "BELONGS_TO")</code> finds the WP; assert an edge to a missing node returns <code>ErrNotFound</code>. Write this test yourself — it's the week-1 exam.</p></li>
+	return out, nil
+}
+
+// DeleteNode: DETACH DELETE — the rollback primitive weeks 2-3 use
+// when a bundled write half-fails.
+func (s *Store) DeleteNode(ctx context.Context, id string) error {
+	_, err := s.run(ctx, `MATCH (n {id: $id, project_id: $pid}) DETACH DELETE n`,
+		map[string]any{"id": id})
+	return err
+}</code></pre></div>
+          <p>(Add the <code>neo4j</code> import to this file too.)</p></li>
+        <li><p><strong>Test the walk.</strong> Create a Responsibility, a WorkPackage, a <code>BELONGS_TO</code> edge; assert <code>Neighbors(ctx, resp, "in", "BELONGS_TO")</code> finds the WP; assert an edge to a missing node returns <code>ErrNotFound</code>; assert <code>DeleteNode</code> takes the node's edges with it. Write this test yourself — it's the week-1 exam.</p></li>
       </ol>
-      <div class="callout check"><h4>Checkpoint</h4><p>Your test proves: valid edge created; duplicate edge is a no-op; edge to a ghost node fails loudly; one-hop walk works in both directions.</p></div>
+      <div class="callout check"><h4>Checkpoint</h4><p>Your test proves: valid edge created; duplicate edge is a no-op (MERGE); edge to a ghost node fails loudly; one-hop walk works in both directions; DETACH DELETE leaves no dangling edges (verify in mgconsole: <code>MATCH ()-[r]-&gt;() RETURN count(r);</code>).</p></div>
       <div class="callout war"><h4>Why it exists</h4><p>The real rule documents the failure: nodes created with a <code>responsibility_id</code> property but no <code>BELONGS_TO</code> edge were invisible to the parent's UI tabs and to the wave planner — the data existed and the system couldn't see it. "The graph saying 35 things can run in parallel when they need infrastructure first" is the graph lying; edges are how it tells the truth.</p></div>
     </div>
   </details>
@@ -395,6 +457,7 @@ func (s *Store) Neighbors(id, dir, edgeType string) ([]Edge, error) {
           <div class="code" data-file><span class="fname">server/cmd/minidde/main.go</span><pre><code>package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -410,18 +473,19 @@ func main() {
 	}
 }
 
-func openStore() (*graph.Store, error) {
-	// Course simplification: project id from env with the same
-	// default the .minidde/project.yaml pins.
+func openStore(ctx context.Context) (*graph.Store, error) {
+	// Course simplification for week 1: env with the same defaults
+	// .minidde/project.yaml pins. Week 4 replaces this with a real
+	// config loader reading that file.
 	pid := os.Getenv("MINIDDE_PROJECT")
 	if pid == "" {
 		pid = "mini-c2c"
 	}
-	db := os.Getenv("MINIDDE_DB")
-	if db == "" {
-		db = "minidde.db"
+	uri := os.Getenv("MINIDDE_BOLT")
+	if uri == "" {
+		uri = "bolt://localhost:7687"
 	}
-	return graph.Open(db, pid)
+	return graph.Open(ctx, uri, pid)
 }
 
 func emit(v any) error {
@@ -434,11 +498,12 @@ func run(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: minidde &lt;create-node|get|ls|link|neighbors&gt; ...")
 	}
-	s, err := openStore()
+	ctx := context.Background()
+	s, err := openStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer s.Close()
+	defer s.Close(ctx)
 
 	switch args[0] {
 	case "create-node":
@@ -451,13 +516,13 @@ func run(args []string) error {
 		if err := json.Unmarshal([]byte(*props), &amp;p); err != nil {
 			return fmt.Errorf("bad --props: %w", err)
 		}
-		if err := s.CreateNode(graph.Node{ID: *id, Type: *typ, Props: p}); err != nil {
+		if err := s.CreateNode(ctx, graph.Node{ID: *id, Type: *typ, Props: p}); err != nil {
 			return err
 		}
-		n, _ := s.GetNode(*id)
+		n, _ := s.GetNode(ctx, *id)
 		return emit(n)
 	case "get":
-		n, err := s.GetNode(args[1])
+		n, err := s.GetNode(ctx, args[1])
 		if err != nil {
 			return err
 		}
@@ -467,7 +532,7 @@ func run(args []string) error {
 		typ := fs.String("type", "Responsibility", "node type")
 		status := fs.String("status", "", "status filter")
 		fs.Parse(args[1:])
-		nodes, err := s.QueryAll(*typ, *status)
+		nodes, err := s.QueryAll(ctx, *typ, *status)
 		if err != nil {
 			return err
 		}
@@ -478,7 +543,7 @@ func run(args []string) error {
 		dst := fs.String("dst", "", "target node id")
 		typ := fs.String("type", "", "edge type")
 		fs.Parse(args[1:])
-		if err := s.CreateEdge(*src, *dst, *typ); err != nil {
+		if err := s.CreateEdge(ctx, *src, *dst, *typ); err != nil {
 			return err
 		}
 		return emit(map[string]string{"created": *src + " -[" + *typ + "]-&gt; " + *dst})
@@ -488,7 +553,7 @@ func run(args []string) error {
 		dir := fs.String("dir", "out", "out|in")
 		typ := fs.String("type", "", "edge type filter")
 		fs.Parse(args[1:])
-		edges, err := s.Neighbors(*id, *dir, *typ)
+		edges, err := s.Neighbors(ctx, *id, *dir, *typ)
 		if err != nil {
 			return err
 		}
@@ -508,10 +573,10 @@ $M create-node --id booking-core-wp-001 --type WorkPackage \
   --props '{"name":"Booking API","sequence":1}'
 $M link --src booking-core-wp-001 --dst booking-core --type BELONGS_TO
 $M ls --type Responsibility</code></pre></div></li>
-        <li><p><strong>Run it</strong>: <code>chmod +x scripts/seed.sh &amp;&amp; ./scripts/seed.sh</code>. Then explore: <code>go run ./server/cmd/minidde neighbors --id booking-core --dir in</code>.</p></li>
-        <li><p><strong>Commit</strong>, and add <code>minidde.db</code> to <code>.gitignore</code> — state lives in the graph, but the graph's <em>file</em> is derived and rebuildable from your seed.</p></li>
+        <li><p><strong>Run it</strong>: <code>chmod +x scripts/seed.sh &amp;&amp; ./scripts/seed.sh</code>. Then explore: <code>go run ./server/cmd/minidde neighbors --id booking-core --dir in</code> — and the same walk in Cypher via mgconsole: <code>MATCH (wp)-[:BELONGS_TO]-&gt;(r {id:'booking-core'}) RETURN wp.id;</code>.</p></li>
+        <li><p><strong>Commit.</strong> Note what you are <em>not</em> committing: graph data lives in the container's volume, not the repo — and that's fine, because your seed is <b>idempotent</b> (MERGE all the way down). Wipe the container (<code>docker rm -f memgraph</code>, re-run the week-1.1 <code>docker run</code>) and re-seed to prove the graph is rebuildable. State you can regenerate is state you can't lose.</p></li>
       </ol>
-      <div class="callout check"><h4>Checkpoint — end of week 1</h4><p>The seed runs twice in a row with no errors (idempotency proves itself). <code>neighbors --id booking-core --dir in</code> returns the WP edge. You can explain to a colleague why edges beat foreign-key props in this system.</p></div>
+      <div class="callout check"><h4>Checkpoint — end of week 1</h4><p>The seed runs twice in a row with no errors (idempotency proves itself). <code>neighbors --id booking-core --dir in</code> returns the WP edge. You can explain to a colleague why edges beat foreign-key props in this system — and you've run the same query from Go and from mgconsole.</p></div>
     </div>
   </details>
 </section>

@@ -1,8 +1,9 @@
 # Build Your Own Nexus
 
 An 8-week interactive course: master **Nexus DDE** by rebuilding its essential
-machinery at 1/100th scale — a mini-DDE (Go + SQLite graph server, governed
-mutation, MCP tool surface, gates/verdicts/hooks, a Next.js mini-PCC) — then
+machinery at 1/100th scale — a mini-DDE (Go graph server on Memgraph, Cypher
+over Bolt, governed mutation, MCP tool surface, gates/verdicts/hooks, a
+Next.js mini-PCC) — then
 using that mini-DDE to design, plan, build, and accept a **mini contract-to-cash
 app** (mini-booking → mini-billing → mini-collections + a Next.js frontend on
 the C2C three-zone shell).
