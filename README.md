@@ -17,6 +17,10 @@ Open [`index.html`](index.html) in a browser — it is fully self-contained
 concept with step-by-step tasks, an "In the real system" callout citing the
 exact files in the `C2C_Ono_AIR310054` repo, and a mechanical checkpoint.
 
+Reading the course needs nothing else. *Doing* the coursework needs Docker
+(Memgraph runs in a container from week 1), Go, Node, git, the SQLite CLI,
+and Claude Code — the page's setup section lists versions.
+
 Lesson progress (checkboxes) is stored in your browser's localStorage only.
 
 Your own coursework lives in a separate workspace you create in week 1
